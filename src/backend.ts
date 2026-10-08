@@ -60,6 +60,14 @@ export interface NotePayload {
   text: string;
 }
 
+export interface WireStamp {
+  src: number;
+  rect: [number, number, number, number];
+  w: number;
+  h: number;
+  rgbaB64: string;
+}
+
 export async function saveDocument(
   srcPath: string,
   outPath: string,
@@ -67,12 +75,13 @@ export async function saveDocument(
   highlights: Highlight[],
   notes: NotePayload[],
   edits: ObjectEdit[],
+  stamps: WireStamp[],
 ): Promise<void> {
   if (!inTauri) {
-    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits });
+    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits, stamps });
     return;
   }
-  await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits });
+  await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits, stamps });
 }
 
 export async function listPageObjects(srcPath: string, page: number): Promise<ObjDesc[]> {

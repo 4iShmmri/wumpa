@@ -3,10 +3,12 @@ import { TextLayer } from "pdfjs-dist";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore, useActiveTab, type Tool } from "../store";
 import { getDoc, getPage, getAnnots, docPath, type DocEntry, type ExistingAnnot } from "../pdf";
-import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit } from "../types";
+import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem } from "../types";
 import {
   openFileDialog, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
 } from "../actions";
+import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
+import StampLayer from "./StampLayer";
 import { getObjects, adjustedBox } from "../objects";
 import { confirmDialog } from "../backend";
 import { report } from "../errors";
@@ -364,6 +366,7 @@ interface PdfPageProps {
   searchQuery: string;
   highlights: Highlight[];
   notes: Note[];
+  stamps: StampItem[];
   tabId: string;
   tabPath: string;
   edits: ObjectEdit[];
@@ -375,7 +378,7 @@ interface PdfPageProps {
 
 function PdfPage({
   entry, spec, index, zoom, w, h, searchQuery, highlights,
-  notes, tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
+  notes, stamps, tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
 }: PdfPageProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -577,6 +580,15 @@ function PdfPage({
             />
           );
         })}
+      {viewport && stamps.length > 0 && (
+        <StampLayer
+          tabId={tabId}
+          src={spec.src}
+          stamps={stamps}
+          viewport={viewport}
+          zoom={zoom}
+        />
+      )}
       {viewport && (tool === "edit" || tool === "erase") && (
         <ObjectLayer
           tabId={tabId}
@@ -707,9 +719,10 @@ export default function Viewer() {
 
   const onViewerClick = async (e: React.MouseEvent) => {
     const st = useStore.getState();
-    if (st.tool !== "note") return;
+    const tool = st.tool;
+    if (tool !== "note" && tool !== "text" && tool !== "sign") return;
     const target = e.target as Element;
-    if (target.closest(".note-icon, .note-popover")) return;
+    if (target.closest(".note-icon, .note-popover, .stamp, .stamp-bar, .stamp-edit, .stamp-handle")) return;
     const wrap = target.closest<HTMLElement>("[data-pageindex]");
     const t = useActiveTabNow();
     if (!wrap || !t || !entry) return;
@@ -725,11 +738,33 @@ export default function Viewer() {
         e.clientX - box.left,
         e.clientY - box.top,
       ) as [number, number];
-      const note: Note = { id: crypto.randomUUID(), src: spec.src, x: px, y: py, text: "" };
-      addNote(t.id, note);
-      setOpenNote(note.id);
+      if (tool === "note") {
+        const note: Note = { id: crypto.randomUUID(), src: spec.src, x: px, y: py, text: "" };
+        addNote(t.id, note);
+        setOpenNote(note.id);
+      } else if (tool === "text") {
+        const stamp = addTextStamp(t.id, spec.src, px, py);
+        st.setStampSel({ src: spec.src, id: stamp.id });
+        st.setStampEditing(stamp.id);
+      } else {
+        let sig: string | null = null;
+        try {
+          sig = localStorage.getItem("signature");
+        } catch {
+          sig = null;
+        }
+        if (!sig) {
+          st.setSignatureModal(true);
+        } else {
+          const img = await loadImage(sig);
+          const stamp = addSignatureStamp(
+            t.id, spec.src, px, py, sig, img.width / Math.max(1, img.height),
+          );
+          st.setStampSel({ src: spec.src, id: stamp.id });
+        }
+      }
     } catch (err) {
-      report("Could not add note", err);
+      report("Could not place item", err);
     }
     st.setTool("select");
   };
@@ -778,11 +813,13 @@ export default function Viewer() {
         "viewer" +
         (tool === "note" ? " note-mode" : "") +
         (tool === "edit" ? " edit-mode" : "") +
-        (tool === "erase" ? " erase-mode" : "")
+        (tool === "erase" ? " erase-mode" : "") +
+        (tool === "text" ? " text-mode" : "") +
+        (tool === "sign" ? " sign-mode" : "")
       }
       ref={containerRef}
       onScroll={onScroll}
-      onClick={tool === "note" ? onViewerClick : undefined}
+      onClick={tool === "note" || tool === "text" || tool === "sign" ? onViewerClick : undefined}
     >
       {!entry && <div className="loading">Loading…</div>}
       {entry && (
@@ -811,6 +848,7 @@ export default function Viewer() {
                   searchQuery={searchQuery}
                   highlights={tab.highlights.filter((hl) => hl.src === spec.src)}
                   notes={tab.notes.filter((n) => n.src === spec.src)}
+                  stamps={tab.stamps.filter((st) => st.src === spec.src)}
                   tabId={tab.id}
                   tabPath={tab.path}
                   edits={tab.edits}

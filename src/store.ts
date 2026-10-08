@@ -1,9 +1,9 @@
 import { create } from "zustand";
-import type { Tab, Snapshot, Highlight, Note, ObjectEdit } from "./types";
+import type { Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem } from "./types";
 import { evictDoc } from "./pdf";
 import { evictObjects } from "./objects";
 
-export type Tool = "select" | "note" | "edit" | "erase";
+export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign";
 
 export interface ObjSel {
   src: number;
@@ -26,6 +26,9 @@ interface AppState {
   scrollTarget: { page: number; nonce: number } | null;
   tool: Tool;
   objSel: ObjSel | null;
+  stampSel: { src: number; id: string } | null;
+  stampEditing: string | null;
+  signatureModalOpen: boolean;
 
   addTab: (tab: Tab) => void;
   closeTab: (id: string) => void;
@@ -41,6 +44,9 @@ interface AppState {
   scrollTo: (page: number) => void;
   setTool: (tool: Tool) => void;
   setObjSel: (sel: ObjSel | null) => void;
+  setStampSel: (sel: { src: number; id: string } | null) => void;
+  setStampEditing: (id: string | null) => void;
+  setSignatureModal: (open: boolean) => void;
 }
 
 function snapshot(t: Tab): Snapshot {
@@ -49,6 +55,7 @@ function snapshot(t: Tab): Snapshot {
     highlights: t.highlights,
     notes: t.notes,
     edits: t.edits,
+    stamps: t.stamps,
   });
 }
 
@@ -66,6 +73,9 @@ export const useStore = create<AppState>((set, get) => ({
   scrollTarget: null,
   tool: "select",
   objSel: null,
+  stampSel: null,
+  stampEditing: null,
+  signatureModalOpen: false,
 
   addTab: (tab) =>
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
@@ -89,6 +99,8 @@ export const useStore = create<AppState>((set, get) => ({
       search: { open: false, query: "", matches: [], current: 0 },
       tool: "select",
       objSel: null,
+      stampSel: null,
+      stampEditing: null,
     }),
 
   patchTab: (id, patch) =>
@@ -120,6 +132,7 @@ export const useStore = create<AppState>((set, get) => ({
           highlights: prev.highlights,
           notes: prev.notes,
           edits: prev.edits,
+          stamps: prev.stamps,
           past: t.past.slice(0, -1),
           future: [snapshot(t), ...t.future],
           dirty: true,
@@ -140,6 +153,7 @@ export const useStore = create<AppState>((set, get) => ({
           highlights: next.highlights,
           notes: next.notes,
           edits: next.edits,
+          stamps: next.stamps,
           past: [...t.past, snapshot(t)],
           future: t.future.slice(1),
           dirty: true,
@@ -154,6 +168,8 @@ export const useStore = create<AppState>((set, get) => ({
       evictObjects(id);
       return {
         objSel: null,
+        stampSel: null,
+        stampEditing: null,
         tabs: s.tabs.map((t) => {
           if (t.id !== id) return t;
           const n = t.pages.length;
@@ -165,6 +181,7 @@ export const useStore = create<AppState>((set, get) => ({
             highlights: [] as Highlight[],
             notes: [] as Note[],
             edits: [] as ObjectEdit[],
+            stamps: [] as StampItem[],
             previewPath: null,
             past: [],
             future: [],
@@ -194,8 +211,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
   scrollTo: (page) =>
     set((s) => ({ scrollTarget: { page, nonce: (s.scrollTarget?.nonce ?? 0) + 1 } })),
-  setTool: (tool) => set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null })),
-  setObjSel: (objSel) => set({ objSel }),
+  setTool: (tool) =>
+    set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null, stampSel: null })),
+  setObjSel: (objSel) => set((s) => ({ objSel, stampSel: objSel ? null : s.stampSel })),
+  setStampSel: (stampSel) => set((s) => ({ stampSel, objSel: stampSel ? null : s.objSel })),
+  setStampEditing: (stampEditing) => set({ stampEditing }),
+  setSignatureModal: (signatureModalOpen) => set({ signatureModalOpen }),
 }));
 
 export function useActiveTab(): Tab | null {

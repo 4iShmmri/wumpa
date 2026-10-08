@@ -45,7 +45,7 @@ fn root_pages_id(doc: &Document) -> R<ObjectId> {
 
 const INHERITABLE: [&[u8]; 4] = [b"Resources", b"MediaBox", b"CropBox", b"Rotate"];
 
-fn find_inherited(doc: &Document, start: &Dictionary, key: &[u8]) -> Option<Object> {
+pub(crate) fn find_inherited(doc: &Document, start: &Dictionary, key: &[u8]) -> Option<Object> {
     let mut current = start.get(b"Parent").ok()?.as_reference().ok();
     while let Some(pid) = current {
         let dict = doc.get_object(pid).ok()?.as_dict().ok()?;

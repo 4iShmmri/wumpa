@@ -6,11 +6,13 @@ import Sidebar from "./components/Sidebar";
 import Viewer from "./components/Viewer";
 import SearchBar from "./components/SearchBar";
 import StatusBar from "./components/StatusBar";
+import SignatureModal from "./components/SignatureModal";
 import { useStore } from "./store";
 import {
   openPaths, openFileDialog, saveActive, closeTabSafe,
   deleteSelection, splitEvery, deleteObject,
 } from "./actions";
+import { deleteStamp } from "./stamps";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
 import { schedulePreview } from "./preview";
 
@@ -128,6 +130,12 @@ export default function App() {
         st.patchTab(tab.id, { zoom: 1 });
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
+        tab && !inInput && st.stampSel
+      ) {
+        e.preventDefault();
+        deleteStamp(tab.id, st.stampSel.id);
+      } else if (
+        (e.key === "Delete" || e.key === "Backspace") &&
         tab && !inInput && st.objSel
       ) {
         e.preventDefault();
@@ -154,8 +162,30 @@ export default function App() {
       ) {
         e.preventDefault();
         st.setTool(st.tool === "erase" ? "select" : "erase");
+      } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "t" && tab && !inInput
+      ) {
+        e.preventDefault();
+        st.setTool(st.tool === "text" ? "select" : "text");
+      } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "s" && tab && !inInput
+      ) {
+        e.preventDefault();
+        if (st.tool === "sign") {
+          st.setTool("select");
+        } else {
+          let sig: string | null = null;
+          try {
+            sig = localStorage.getItem("signature");
+          } catch {
+            sig = null;
+          }
+          if (sig) st.setTool("sign");
+          else st.setSignatureModal(true);
+        }
       } else if (e.key === "Escape" && tab && !inInput) {
-        if (st.objSel) st.setObjSel(null);
+        if (st.stampSel) st.setStampSel(null);
+        else if (st.objSel) st.setObjSel(null);
         else if (st.tool !== "select") st.setTool("select");
         else if (st.search.open) st.setSearch({ open: false });
         else if (tab.selected.length) st.patchTab(tab.id, { selected: [] });
@@ -175,6 +205,7 @@ export default function App() {
         <SearchBar />
       </div>
       <StatusBar />
+      <SignatureModal />
       {splitOpen && <SplitModal onClose={() => setSplitOpen(false)} />}
     </div>
   );

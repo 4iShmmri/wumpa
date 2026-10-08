@@ -1,8 +1,10 @@
 mod editor;
 mod pdf_ops;
+mod stamps;
 
 use editor::ObjectEdit;
 use pdf_ops::{Highlight, Note, PageSpec};
+use stamps::Stamp;
 use serde::Deserialize;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
@@ -24,9 +26,11 @@ async fn save_document(
     highlights: Vec<Highlight>,
     notes: Vec<Note>,
     edits: Vec<ObjectEdit>,
+    stamps: Vec<Stamp>,
 ) -> Result<(), String> {
     let mut doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
     editor::apply_edits(&mut doc, &edits)?;
+    stamps::apply_stamps(&mut doc, &stamps)?;
     pdf_ops::rebuild(&mut doc, &pages, &highlights, &notes)?;
     doc.save(&out_path).map_err(|e| e.to_string())?;
     Ok(())

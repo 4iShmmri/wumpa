@@ -6,6 +6,7 @@ import {
 } from "./backend";
 import { getDoc, getPage, getPageText, docPath } from "./pdf";
 import { report } from "./errors";
+import { rasterizeStamps } from "./stamps";
 
 const S = useStore.getState;
 
@@ -22,7 +23,7 @@ export async function openPaths(paths: string[]) {
       const tab: Tab = {
         id, path, name: baseName(path),
         pages: Array.from({ length: entry.numPages }, (_, i) => ({ src: i + 1, rotation: 0 })),
-        highlights: [], notes: [], edits: [], previewPath: null, past: [], future: [],
+        highlights: [], notes: [], edits: [], stamps: [], previewPath: null, past: [], future: [],
         zoom: 1, currentPage: 1, selected: [],
         dirty: false, docVersion: 0,
       };
@@ -48,10 +49,12 @@ export async function saveActive(saveAs: boolean) {
     outPath = picked.endsWith(".pdf") ? picked : picked + ".pdf";
   }
   try {
+    const stamps = await rasterizeStamps(tab.stamps);
     await saveDocument(
       tab.path, outPath, tab.pages, tab.highlights,
       tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
       tab.edits,
+      stamps,
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
     S().setStatus(`Saved ${baseName(outPath)}`);
@@ -98,7 +101,7 @@ export async function extractSelected() {
   if (!out) return;
   const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
   try {
-    await saveDocument(tab.path, outPath, specs, [], [], tab.edits);
+    await saveDocument(tab.path, outPath, specs, [], [], tab.edits, []);
     S().setStatus(`Extracted ${specs.length} page(s)`);
     await openPaths([outPath]);
   } catch (e) {

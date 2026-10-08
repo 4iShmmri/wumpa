@@ -35,11 +35,23 @@ export interface ObjectEdit {
   ay?: number;
 }
 
+export interface StampItem {
+  id: string;
+  src: number;
+  rect: [number, number, number, number];
+  kind: "text" | "signature";
+  text?: string;
+  size?: number;
+  color?: string;
+  sigDataUrl?: string;
+}
+
 export interface Snapshot {
   pages: PageSpec[];
   highlights: Highlight[];
   notes: Note[];
   edits: ObjectEdit[];
+  stamps: StampItem[];
 }
 
 export interface Tab {
@@ -50,6 +62,7 @@ export interface Tab {
   highlights: Highlight[];
   notes: Note[];
   edits: ObjectEdit[];
+  stamps: StampItem[];
   previewPath: string | null;
   past: Snapshot[];
   future: Snapshot[];

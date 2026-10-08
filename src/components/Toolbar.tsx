@@ -31,6 +31,8 @@ const icons = {
   note: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
   editObj: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z",
   erase: "M9 3H5a2 2 0 0 0-2 2v4 M15 3h4a2 2 0 0 1 2 2v4 M9 21H5a2 2 0 0 1-2-2v-4 M15 21h4a2 2 0 0 0 2-2v-4 M8 12h8",
+  text: "M4 7V5h16v2 M12 5v14 M9 19h6",
+  sign: "M3 17c3-6 5-8 6-6s-1 5 1 5 3-7 5-5-1 6 2 6h4",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
@@ -101,6 +103,35 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         onClick={() => st().setTool(tool === "erase" ? "select" : "erase")}
       >
         <I d={icons.erase} />
+      </button>
+      <button
+        title="Add text (T)"
+        disabled={!has}
+        className={tool === "text" ? "active" : ""}
+        onClick={() => st().setTool(tool === "text" ? "select" : "text")}
+      >
+        <I d={icons.text} />
+      </button>
+      <button
+        title="Signature (S)"
+        disabled={!has}
+        className={tool === "sign" ? "active" : ""}
+        onClick={() => {
+          if (tool === "sign") {
+            st().setTool("select");
+            return;
+          }
+          let sig: string | null = null;
+          try {
+            sig = localStorage.getItem("signature");
+          } catch {
+            sig = null;
+          }
+          if (sig) st().setTool("sign");
+          else st().setSignatureModal(true);
+        }}
+      >
+        <I d={icons.sign} />
       </button>
       <div className="spacer" />
       <button
