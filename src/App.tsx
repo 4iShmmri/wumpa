@@ -10,7 +10,7 @@ import SignatureModal from "./components/SignatureModal";
 import { useStore } from "./store";
 import {
   openPaths, openFileDialog, saveActive, closeTabSafe,
-  deleteSelection, splitEvery, deleteObject, deleteShape,
+  deleteSelection, splitEvery, deleteObject, deleteShape, printActive,
 } from "./actions";
 import { deleteStamp } from "./stamps";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
@@ -106,6 +106,9 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         saveActive(e.shiftKey);
+      } else if (mod && e.key.toLowerCase() === "p" && tab) {
+        e.preventDefault();
+        printActive();
       } else if (mod && e.key.toLowerCase() === "f" && tab) {
         e.preventDefault();
         st.setSearch({ open: true });

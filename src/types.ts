@@ -1,6 +1,8 @@
 export interface PageSpec {
-  src: number; // 1-based page number in the source file on disk
+  src: number; // 1-based page number in the source file on disk; 0 = blank page
   rotation: number; // extra rotation delta, multiple of 90
+  w?: number; // blank-page size in PDF points
+  h?: number;
 }
 
 export interface Highlight {

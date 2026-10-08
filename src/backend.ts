@@ -35,6 +35,22 @@ export async function pickSavePath(defaultName: string): Promise<string | null> 
   return null;
 }
 
+export async function pickSavePathWithExt(
+  defaultName: string,
+  ext: string,
+  filterName: string,
+): Promise<string | null> {
+  if (inTauri) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    return await save({
+      defaultPath: defaultName,
+      filters: [{ name: filterName, extensions: [ext] }],
+    });
+  }
+  alert("Saving requires the desktop app");
+  return null;
+}
+
 export async function pickDirectory(): Promise<string | null> {
   if (inTauri) {
     const { open } = await import("@tauri-apps/plugin-dialog");
@@ -85,6 +101,27 @@ export async function saveDocument(
     return;
   }
   await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes });
+}
+
+export async function printDocument(
+  srcPath: string,
+  pages: PageSpec[],
+  highlights: Highlight[],
+  notes: NotePayload[],
+  edits: ObjectEdit[],
+  stamps: WireStamp[],
+  shapes: WireShape[],
+): Promise<void> {
+  if (!inTauri) {
+    window.print();
+    return;
+  }
+  await invoke("print_document", { srcPath, pages, highlights, notes, edits, stamps, shapes });
+}
+
+export async function savePng(path: string, dataB64: string): Promise<void> {
+  if (!inTauri) return;
+  await invoke("save_png", { path, dataB64 });
 }
 
 export async function listPageObjects(srcPath: string, page: number): Promise<ObjDesc[]> {

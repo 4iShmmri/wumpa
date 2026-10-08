@@ -1015,3 +1015,88 @@ body {
   background: var(--fg);
   border-radius: 50%;
 }
+
+/* ---------- Context menu ---------- */
+.ctx-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 178px;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ctx-menu button {
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.ctx-menu button:hover {
+  background: var(--btn-hover);
+}
+
+.ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+/* ---------- Welcome recents ---------- */
+.welcome-recent {
+  margin-top: 28px;
+  text-align: left;
+  min-width: 300px;
+  max-width: 420px;
+}
+
+.welcome-recent h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+  padding-left: 10px;
+}
+
+.recent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.recent-row:hover {
+  background: var(--btn-hover);
+}
+
+.recent-name {
+  font-size: 13px;
+}
+
+.recent-path {
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}

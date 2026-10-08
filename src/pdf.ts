@@ -1,7 +1,8 @@
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { loadPdfBytes } from "./backend";
+import { loadPdfBytes, baseName } from "./backend";
+import type { PageSpec } from "./types";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -36,18 +37,55 @@ const cache = new Map<string, DocEntry>();
 export const docPath = (t: { path: string; previewPath: string | null }) =>
   t.previewPath ?? t.path;
 
-export async function getDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
+export function specBase(entry: Pick<DocEntry, "dims"> | null, spec: PageSpec): PageDims | null {
+  if (spec.src === 0) {
+    return {
+      w: spec.w && spec.w > 0 ? spec.w : 612,
+      h: spec.h && spec.h > 0 ? spec.h : 792,
+      rotate: 0,
+    };
+  }
+  return entry?.dims[spec.src - 1] ?? null;
+}
+
+const pending = new Map<string, Promise<DocEntry>>();
+
+export function getDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
   const existing = cache.get(tabId);
-  if (existing && existing.version === version) return existing;
-  if (existing) existing.doc.loadingTask.destroy().catch(() => {});
+  if (existing && existing.version === version) return Promise.resolve(existing);
+  const key = `${tabId}:${version}:${path}`;
+  let p = pending.get(key);
+  if (!p) {
+    p = loadDoc(tabId, path, version).finally(() => pending.delete(key));
+    pending.set(key, p);
+  }
+  return p;
+}
+
+async function loadDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
+  const existing = cache.get(tabId);
+  if (existing) {
+    cache.delete(tabId);
+    existing.doc.loadingTask.destroy().catch(() => {});
+  }
 
   const buf = await loadPdfBytes(path);
-  const doc = await pdfjs.getDocument({
+  const task = pdfjs.getDocument({
     data: new Uint8Array(buf),
     cMapUrl: new URL("pdfjs/cmaps/", document.baseURI).href,
     cMapPacked: true,
     standardFontDataUrl: new URL("pdfjs/standard_fonts/", document.baseURI).href,
-  }).promise;
+  });
+  task.onPassword = (updatePassword: (pw: string) => void, reason: number) => {
+    const pw = window.prompt(
+      reason === 2
+        ? "Wrong password. Try again:"
+        : `"${baseName(path)}" is password-protected. Enter password:`,
+    );
+    if (pw === null) void task.destroy();
+    else updatePassword(pw);
+  };
+  const doc = await task.promise;
 
   const dims: PageDims[] = [];
   for (let i = 1; i <= doc.numPages; i++) {

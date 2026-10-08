@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TextLayer } from "pdfjs-dist";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore, useActiveTab, type Tool } from "../store";
-import { getDoc, getPage, getAnnots, docPath, type DocEntry, type ExistingAnnot } from "../pdf";
+import { getDoc, getPage, getAnnots, docPath, specBase, type DocEntry, type ExistingAnnot } from "../pdf";
 import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem, ShapeItem } from "../types";
 import {
-  openFileDialog, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
+  openFileDialog, openPaths, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
+  getRecentFiles, dropRecent, type RecentFile,
 } from "../actions";
 import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
 import StampLayer from "./StampLayer";
@@ -431,7 +432,7 @@ function PdfPage({
   }, []);
 
   useEffect(() => {
-    if (!visible || viewport) return;
+    if (!visible || viewport || spec.src === 0) return;
     let cancelled = false;
     (async () => {
       const page = await getPage(entry, spec.src);
@@ -665,6 +666,11 @@ export default function Viewer() {
 
   const tabId = tab?.id;
   const docVersion = tab?.docVersion ?? 0;
+  const [recents, setRecents] = useState<RecentFile[]>(() => getRecentFiles());
+
+  useEffect(() => {
+    if (!tabId) setRecents(getRecentFiles());
+  }, [tabId]);
 
   useEffect(() => {
     let on = true;
@@ -690,7 +696,8 @@ export default function Viewer() {
       if (!t || !entry || !containerRef.current) return;
       const spec = t.pages[t.currentPage - 1] ?? t.pages[0];
       if (!spec) return;
-      const base = entry.dims[spec.src - 1];
+      const base = specBase(entry, spec);
+      if (!base) return;
       const swap = spec.rotation % 180 !== 0;
       const bw = swap ? base.h : base.w;
       const zoom = Math.max(0.25, Math.min(6, (containerRef.current.clientWidth - 56) / bw));
@@ -772,7 +779,7 @@ export default function Viewer() {
     if (!wrap || !t || !entry) return;
     const index = Number(wrap.dataset.pageindex);
     const spec = t.pages[index];
-    if (!spec) return;
+    if (!spec || spec.src === 0) return;
     try {
       const page = await getPage(entry, spec.src);
       const rotation = (page.rotate + spec.rotation + 360) % 360;
@@ -844,6 +851,27 @@ export default function Viewer() {
           <button className="btn-primary" onClick={() => openFileDialog()}>
             Open PDF…
           </button>
+          {recents.length > 0 && (
+            <div className="welcome-recent">
+              <h3>Recent</h3>
+              {recents.map((r) => (
+                <button
+                  key={r.path}
+                  className="recent-row"
+                  onClick={async () => {
+                    await openPaths([r.path]);
+                    if (!useStore.getState().tabs.some((t) => t.path === r.path)) {
+                      dropRecent(r.path);
+                      setRecents(getRecentFiles());
+                    }
+                  }}
+                >
+                  <span className="recent-name">{r.name}</span>
+                  <span className="recent-path">{r.path}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -870,7 +898,7 @@ export default function Viewer() {
       {entry && (
         <div className="pages">
           {tab.pages.map((spec, i) => {
-            const base = entry.dims[spec.src - 1];
+            const base = specBase(entry, spec);
             if (!base) return null;
             const swap = spec.rotation % 180 !== 0;
             const w = (swap ? base.h : base.w) * tab.zoom;
@@ -878,7 +906,7 @@ export default function Viewer() {
             return (
               <div
                 className="page-slot"
-                key={`${spec.src}:${spec.rotation}:${tab.zoom}:${entry.version}`}
+                key={`${i}:${spec.src}:${spec.rotation}:${tab.zoom}:${entry.version}`}
                 ref={(el) => {
                   slotRefs.current[i] = el;
                 }}

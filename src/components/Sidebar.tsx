@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore, useActiveTab } from "../store";
-import { getDoc, getPage, docPath, type DocEntry } from "../pdf";
+import { getDoc, getPage, docPath, specBase, type DocEntry } from "../pdf";
 import type { PageSpec } from "../types";
-import { movePage } from "../actions";
+import {
+  movePage, insertBlankPage, duplicatePage, exportPageAsPng,
+  rotateSelection, deleteSelection, extractSelected,
+} from "../actions";
 import { report } from "../errors";
 
 const THUMB_W = 132;
@@ -12,7 +15,7 @@ function Thumb({ entry, spec }: { entry: DocEntry; spec: PageSpec }) {
   const [visible, setVisible] = useState(false);
   const rendered = useRef(false);
 
-  const base = entry.dims[spec.src - 1];
+  const base = specBase(entry, spec) ?? { w: 612, h: 792, rotate: 0 };
   const swap = spec.rotation % 180 !== 0;
   const bw = swap ? base.h : base.w;
   const bh = swap ? base.w : base.h;
@@ -29,7 +32,7 @@ function Thumb({ entry, spec }: { entry: DocEntry; spec: PageSpec }) {
   }, []);
 
   useEffect(() => {
-    if (!visible || rendered.current) return;
+    if (!visible || rendered.current || spec.src === 0) return;
     rendered.current = true;
     let cancelled = false;
     (async () => {
@@ -62,6 +65,7 @@ export default function Sidebar() {
   const drag = useRef<{ from: number; startY: number; active: boolean } | null>(null);
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const suppressClick = useRef(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; index: number } | null>(null);
 
   const tabId = tab?.id;
   const docVersion = tab?.docVersion ?? 0;
@@ -77,6 +81,29 @@ export default function Sidebar() {
       on = false;
     };
   }, [tabId, docVersion]);
+
+  useEffect(() => {
+    setMenu(null);
+  }, [tabId]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as Element | null)?.closest?.(".ctx-menu")) setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setMenu(null);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [menu]);
 
   if (!tab) return <div className="sidebar empty" />;
 
@@ -138,11 +165,26 @@ export default function Sidebar() {
     window.addEventListener("pointerup", onUp);
   };
 
+  const ensureSel = (i: number) => {
+    if (!tab.selected.includes(i)) useStore.getState().patchTab(tab.id, { selected: [i] });
+  };
+
+  const item = (label: string, fn: () => void) => (
+    <button
+      onClick={() => {
+        setMenu(null);
+        fn();
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="sidebar" ref={listRef}>
       {entry &&
         tab.pages.map((spec, i) => (
-          <div key={`${spec.src}:${spec.rotation}:${entry.version}`}>
+          <div key={`${i}:${spec.src}:${spec.rotation}:${entry.version}`}>
             {insertAt === i && <div className="insert-line" />}
             <div
               className={
@@ -153,6 +195,10 @@ export default function Sidebar() {
               onClick={(e) => select(i, e)}
               onDoubleClick={() => useStore.getState().scrollTo(i + 1)}
               onPointerDown={(e) => onPointerDown(i, e)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, index: i });
+              }}
             >
               <Thumb entry={entry} spec={spec} />
               <span className="thumb-num">{i + 1}</span>
@@ -160,6 +206,38 @@ export default function Sidebar() {
           </div>
         ))}
       {insertAt === tab.pages.length && <div className="insert-line" />}
+      {menu && (
+        <div
+          className="ctx-menu"
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 200),
+            top: Math.min(menu.y, window.innerHeight - 290),
+          }}
+        >
+          {item("Duplicate page", () => duplicatePage(tab.id, menu.index))}
+          {item("Insert blank before", () => insertBlankPage(tab.id, menu.index))}
+          {item("Insert blank after", () => insertBlankPage(tab.id, menu.index + 1))}
+          {item("Export as PNG…", () => exportPageAsPng(tab.id, menu.index))}
+          <div className="ctx-sep" />
+          {item("Rotate left", () => {
+            ensureSel(menu.index);
+            rotateSelection(-90);
+          })}
+          {item("Rotate right", () => {
+            ensureSel(menu.index);
+            rotateSelection(90);
+          })}
+          <div className="ctx-sep" />
+          {item("Extract page(s)…", () => {
+            ensureSel(menu.index);
+            extractSelected();
+          })}
+          {item("Delete page(s)", () => {
+            ensureSel(menu.index);
+            deleteSelection();
+          })}
+        </div>
+      )}
     </div>
   );
 }

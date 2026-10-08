@@ -16,6 +16,9 @@ Built with **Rust** (Tauri v2 + lopdf) and **PDF.js**. Works fully offline — y
 - Add free text anywhere (any language — rendered by the OS, so Arabic shaping is correct) and a hand-drawn signature, Fill & Sign style
 - Edit existing text in place: double-click a line in edit mode, rewrite it, done
 - Draw on pages: freehand ink, rectangles, ellipses, lines and arrows in six colors — saved as real PDF annotations
+- Insert blank pages, duplicate pages, export any page as PNG (right-click a thumbnail)
+- Print via the system viewer (⌘P), recent files on the welcome screen, remembers window size
+- Opens password-protected PDFs for viewing
 - Double-click any PDF in Finder/Explorer to open it (after installing)
 - Undo / redo for all page operations
 - Light & dark themes, keyboard shortcuts

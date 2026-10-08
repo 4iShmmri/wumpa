@@ -3,7 +3,7 @@ import { useStore, useActiveTab } from "../store";
 import type { ShapeKind } from "../types";
 import {
   openFileDialog, saveActive, mergeFiles, extractSelected,
-  rotateSelection, deleteSelection, highlightSelection,
+  rotateSelection, deleteSelection, highlightSelection, printActive,
 } from "../actions";
 
 const DRAW_KINDS: ShapeKind[] = ["ink", "rect", "ellipse", "line", "arrow"];
@@ -85,6 +85,7 @@ function I({ d, size = 17 }: { d: string; size?: number }) {
 const icons = {
   open: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
   save: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z M17 21v-8H7v8 M7 3v5h8",
+  print: "M6 9V2h12v7 M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2 M6 14h12v8H6z",
   undo: "M3 7v6h6 M21 17a9 9 0 0 0-15-6.7L3 13",
   redo: "M21 7v6h-6 M3 17a9 9 0 0 1 15-6.7L21 13",
   zoomOut: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35 M8 11h6",
@@ -142,6 +143,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       <button className="txt" title="Save As (⇧⌘S)" disabled={!has} onClick={() => saveActive(true)}>
         Save&nbsp;As
       </button>
+      <button title="Print (⌘P)" disabled={!has} onClick={() => printActive()}><I d={icons.print} /></button>
       <div className="sep" />
       <button title="Undo (⌘Z)" disabled={!has || !tab!.past.length} onClick={() => tab && st().undo(tab.id)}><I d={icons.undo} /></button>
       <button title="Redo (⇧⌘Z)" disabled={!has || !tab!.future.length} onClick={() => tab && st().redo(tab.id)}><I d={icons.redo} /></button>

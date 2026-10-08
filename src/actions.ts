@@ -1,14 +1,53 @@
 import { useStore, getActiveTab } from "./store";
 import type { Tab, Note, ObjectEdit, StampItem, ShapeItem } from "./types";
 import {
-  pickPdfs, pickSavePath, pickDirectory, saveDocument, mergeDocuments,
-  splitDocument, baseName, dirName, confirmDialog,
+  pickPdfs, pickSavePath, pickSavePathWithExt, pickDirectory, saveDocument,
+  mergeDocuments, splitDocument, baseName, dirName, confirmDialog,
+  printDocument, savePng, inTauri,
 } from "./backend";
-import { getDoc, getPage, getPageText, docPath } from "./pdf";
+import { getDoc, getPage, getPageText, docPath, specBase } from "./pdf";
 import { report } from "./errors";
 import { measureText, rasterizeStamps } from "./stamps";
 
 const S = useStore.getState;
+
+export interface RecentFile {
+  path: string;
+  name: string;
+  time: number;
+}
+
+export function getRecentFiles(): RecentFile[] {
+  try {
+    const v = JSON.parse(localStorage.getItem("recentFiles") ?? "[]");
+    return Array.isArray(v) ? v.filter((r) => r && typeof r.path === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(path: string, name: string) {
+  try {
+    const list = [
+      { path, name, time: Date.now() },
+      ...getRecentFiles().filter((r) => r.path !== path),
+    ].slice(0, 10);
+    localStorage.setItem("recentFiles", JSON.stringify(list));
+  } catch {
+    /* best effort */
+  }
+}
+
+export function dropRecent(path: string) {
+  try {
+    localStorage.setItem(
+      "recentFiles",
+      JSON.stringify(getRecentFiles().filter((r) => r.path !== path)),
+    );
+  } catch {
+    /* best effort */
+  }
+}
 
 export async function openPaths(paths: string[]) {
   for (const path of paths) {
@@ -28,6 +67,7 @@ export async function openPaths(paths: string[]) {
         dirty: false, docVersion: 0,
       };
       S().addTab(tab);
+      if (inTauri) pushRecent(path, tab.name);
     } catch (e) {
       report(`Could not open ${baseName(path)}`, e);
     }
@@ -156,6 +196,105 @@ export function deleteSelection() {
     selected: [],
     currentPage: Math.min(t.currentPage, t.pages.length - indices.length),
   }));
+}
+
+export async function insertBlankPage(tabId: string, atIndex: number) {
+  const tab = S().tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  let w = 612;
+  let h = 792;
+  const ref = tab.pages[atIndex - 1] ?? tab.pages[atIndex] ?? tab.pages[0];
+  if (ref) {
+    try {
+      const entry = ref.src === 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
+      const d = specBase(entry, ref);
+      if (d) {
+        const swap = ref.rotation % 180 !== 0;
+        w = swap ? d.h : d.w;
+        h = swap ? d.w : d.h;
+      }
+    } catch {
+      /* default size */
+    }
+  }
+  S().mutateDoc(tabId, (t) => {
+    const pages = [...t.pages];
+    pages.splice(atIndex, 0, { src: 0, rotation: 0, w, h });
+    return { pages, selected: [atIndex] };
+  });
+}
+
+export function duplicatePage(tabId: string, index: number) {
+  S().mutateDoc(tabId, (t) => {
+    const src = t.pages[index];
+    if (!src) return {};
+    const pages = [...t.pages];
+    pages.splice(index + 1, 0, { ...src });
+    return { pages, selected: [index + 1] };
+  });
+}
+
+export async function exportPageAsPng(tabId: string, index: number) {
+  const tab = S().tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  const spec = tab.pages[index];
+  if (!spec) return;
+  const out = await pickSavePathWithExt(
+    `${tab.name.replace(/\.pdf$/i, "")}-page${index + 1}.png`,
+    "png",
+    "PNG image",
+  );
+  if (!out) return;
+  const path = out.toLowerCase().endsWith(".png") ? out : out + ".png";
+  try {
+    const canvas = document.createElement("canvas");
+    if (spec.src === 0) {
+      const d = specBase(null, spec)!;
+      const swap = spec.rotation % 180 !== 0;
+      canvas.width = Math.round((swap ? d.h : d.w) * 2);
+      canvas.height = Math.round((swap ? d.w : d.h) * 2);
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
+      const page = await getPage(entry, spec.src);
+      const rotation = (page.rotate + spec.rotation + 360) % 360;
+      const vp = page.getViewport({ scale: 2, rotation });
+      canvas.width = Math.floor(vp.width);
+      canvas.height = Math.floor(vp.height);
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvas, viewport: vp }).promise;
+    }
+    const dataB64 = canvas.toDataURL("image/png").split(",")[1];
+    await savePng(path, dataB64);
+    S().setStatus(`Exported page ${index + 1} as PNG`);
+  } catch (e) {
+    report("PNG export failed", e);
+  }
+}
+
+export async function printActive() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  try {
+    const stamps = await rasterizeStamps(tab.stamps);
+    await printDocument(
+      tab.path, tab.pages, tab.highlights,
+      tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
+      tab.edits,
+      stamps,
+      tab.shapes.map((sh) => ({
+        src: sh.src, kind: sh.kind, rect: sh.rect, strokes: sh.strokes,
+        color: sh.color, width: sh.width, opacity: sh.opacity,
+      })),
+    );
+    S().setStatus("Opening in system viewer for printing…");
+  } catch (e) {
+    report("Print failed", e);
+  }
 }
 
 export function movePage(from: number, to: number) {
@@ -327,6 +466,7 @@ export async function runSearch(query: string) {
     const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
     const matches: number[] = [];
     for (let i = 0; i < tab.pages.length; i++) {
+      if (tab.pages[i].src === 0) continue;
       const text = (await getPageText(entry, tab.pages[i].src)).toLowerCase();
       let pos = 0;
       while ((pos = text.indexOf(q, pos)) !== -1) {

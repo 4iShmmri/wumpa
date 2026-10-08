@@ -18,6 +18,25 @@ async fn load_pdf(path: String) -> Result<tauri::ipc::Response, String> {
         .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn apply_all_and_save(
+    src_path: &str,
+    out_path: &std::path::Path,
+    pages: &[PageSpec],
+    highlights: &[Highlight],
+    notes: &[Note],
+    edits: &[ObjectEdit],
+    stamps: &[Stamp],
+    shapes: &[Shape],
+) -> Result<(), String> {
+    let mut doc = lopdf::Document::load(src_path).map_err(|e| e.to_string())?;
+    editor::apply_edits(&mut doc, edits)?;
+    stamps::apply_stamps(&mut doc, stamps)?;
+    pdf_ops::rebuild(&mut doc, pages, highlights, notes, shapes)?;
+    doc.save(out_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn save_document(
     src_path: String,
@@ -29,12 +48,60 @@ async fn save_document(
     stamps: Vec<Stamp>,
     shapes: Vec<Shape>,
 ) -> Result<(), String> {
-    let mut doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
-    editor::apply_edits(&mut doc, &edits)?;
-    stamps::apply_stamps(&mut doc, &stamps)?;
-    pdf_ops::rebuild(&mut doc, &pages, &highlights, &notes, &shapes)?;
-    doc.save(&out_path).map_err(|e| e.to_string())?;
-    Ok(())
+    apply_all_and_save(
+        &src_path,
+        std::path::Path::new(&out_path),
+        &pages,
+        &highlights,
+        &notes,
+        &edits,
+        &stamps,
+        &shapes,
+    )
+}
+
+fn print_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("wumpa-print")
+}
+
+fn unique_pdf_name() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{}.pdf", std::process::id(), nanos)
+}
+
+#[tauri::command]
+async fn print_document(
+    src_path: String,
+    pages: Vec<PageSpec>,
+    highlights: Vec<Highlight>,
+    notes: Vec<Note>,
+    edits: Vec<ObjectEdit>,
+    stamps: Vec<Stamp>,
+    shapes: Vec<Shape>,
+) -> Result<String, String> {
+    let dir = print_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(unique_pdf_name());
+    apply_all_and_save(
+        &src_path, &path, &pages, &highlights, &notes, &edits, &stamps, &shapes,
+    )?;
+    tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn save_png(path: String, data_b64: String) -> Result<(), String> {
+    if !path.to_lowercase().ends_with(".png") {
+        return Err("path must end in .png".into());
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_b64.as_bytes())
+        .map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -112,14 +179,34 @@ fn is_pdf_path(arg: &str) -> bool {
     arg.to_lowercase().ends_with(".pdf") && std::path::Path::new(arg).exists()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+
+    #[test]
+    fn save_png_roundtrip_and_extension_check() {
+        let bytes: Vec<u8> = vec![137, 80, 78, 71, 1, 2, 3, 4];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let path = std::env::temp_dir().join(format!("wumpa-test-{}.png", std::process::id()));
+        let path_s = path.to_string_lossy().to_string();
+        save_png(path_s.clone(), b64.clone()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let _ = std::fs::remove_file(&path);
+        assert!(save_png(path_s.replace(".png", ".jpg"), b64).is_err());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(PendingFiles(Mutex::new(Vec::new())))
         .setup(|app| {
             let _ = std::fs::remove_dir_all(preview_dir());
+            let _ = std::fs::remove_dir_all(print_dir());
             let args: Vec<String> = std::env::args().skip(1).filter(|a| is_pdf_path(a)).collect();
             if !args.is_empty() {
                 if let Ok(mut v) = app.state::<PendingFiles>().0.lock() {
@@ -142,7 +229,9 @@ pub fn run() {
             take_pending_files,
             exit_app,
             list_page_objects,
-            apply_edits_preview
+            apply_edits_preview,
+            print_document,
+            save_png
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
