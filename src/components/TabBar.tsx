@@ -1,7 +1,9 @@
 import { useStore } from "../store";
 import { closeTabSafe, openFileDialog } from "../actions";
+import { useT } from "../i18n";
 
 export default function TabBar() {
+  const t = useT();
   const tabs = useStore((s) => s.tabs);
   const activeId = useStore((s) => s.activeId);
 
@@ -34,7 +36,7 @@ export default function TabBar() {
           </span>
         </div>
       ))}
-      <button className="tab-add" data-tip="Open PDF (⌘O)" onClick={() => openFileDialog()}>
+      <button className="tab-add" data-tip={t("tipOpenTab")} onClick={() => openFileDialog()}>
         +
       </button>
     </div>

@@ -5,6 +5,8 @@ import {
   openFileDialog, saveActive, mergeFiles, extractSelected,
   rotateSelection, deleteSelection, highlightSelection, printActive,
 } from "../actions";
+import { useT } from "../i18n";
+import type { LangPref } from "../store";
 
 const DRAW_KINDS: ShapeKind[] = ["ink", "rect", "ellipse", "line", "arrow"];
 const DRAW_COLORS: [number, number, number][] = [
@@ -32,6 +34,7 @@ function KindIcon({ k }: { k: ShapeKind }) {
 }
 
 function DrawPopover() {
+  const t = useT();
   const drawKind = useStore((s) => s.drawKind);
   const drawColor = useStore((s) => s.drawColor);
   const drawWidth = useStore((s) => s.drawWidth);
@@ -42,7 +45,7 @@ function DrawPopover() {
         <button
           key={k}
           className={"dk" + (drawKind === k ? " on" : "")}
-          title={k}
+          title={t(("k" + k[0].toUpperCase() + k.slice(1)) as "kInk" | "kRect" | "kEllipse" | "kLine" | "kArrow")}
           onClick={() => st().setDrawKind(k)}
         >
           <KindIcon k={k} />
@@ -54,7 +57,7 @@ function DrawPopover() {
           key={c.join()}
           className={"cdot" + (drawColor.join() === c.join() ? " on" : "")}
           style={{ background: cssColor(c) }}
-          data-tip="Color"
+          data-tip={t("tipColor")}
           onClick={() => st().setDrawColor(c)}
         />
       ))}
@@ -110,8 +113,11 @@ const icons = {
 };
 
 export default function Toolbar({ onSplit }: { onSplit: () => void }) {
+  const t = useT();
   const tab = useActiveTab();
   const theme = useStore((s) => s.theme);
+  const lang = useStore((s) => s.lang);
+  const effectiveLang = useStore((s) => s.effectiveLang);
   const searchOpen = useStore((s) => s.search.open);
   const tool = useStore((s) => s.tool);
   const st = useStore.getState;
@@ -138,36 +144,36 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
 
   return (
     <div className="toolbar">
-      <button data-tip="Open (⌘O)" onClick={() => openFileDialog()}><I d={icons.open} /></button>
-      <button data-tip="Save (⌘S)" disabled={!has} onClick={() => saveActive(false)}><I d={icons.save} /></button>
-      <button className="txt" data-tip="Save As (⇧⌘S)" disabled={!has} onClick={() => saveActive(true)}>
-        Save&nbsp;As
+      <button data-tip={t("tipOpen")} onClick={() => openFileDialog()}><I d={icons.open} /></button>
+      <button data-tip={t("tipSave")} disabled={!has} onClick={() => saveActive(false)}><I d={icons.save} /></button>
+      <button className="txt" data-tip={t("tipSaveAs")} disabled={!has} onClick={() => saveActive(true)}>
+        {t("btnSaveAs")}
       </button>
-      <button data-tip="Print (⌘P)" disabled={!has} onClick={() => printActive()}><I d={icons.print} /></button>
+      <button data-tip={t("tipPrint")} disabled={!has} onClick={() => printActive()}><I d={icons.print} /></button>
       <div className="sep" />
-      <button data-tip="Undo (⌘Z)" disabled={!has || !tab!.past.length} onClick={() => tab && st().undo(tab.id)}><I d={icons.undo} /></button>
-      <button data-tip="Redo (⇧⌘Z)" disabled={!has || !tab!.future.length} onClick={() => tab && st().redo(tab.id)}><I d={icons.redo} /></button>
+      <button data-tip={t("tipUndo")} disabled={!has || !tab!.past.length} onClick={() => tab && st().undo(tab.id)}><I d={icons.undo} /></button>
+      <button data-tip={t("tipRedo")} disabled={!has || !tab!.future.length} onClick={() => tab && st().redo(tab.id)}><I d={icons.redo} /></button>
       <div className="sep" />
-      <button data-tip="Zoom out (⌘-)" disabled={!has} onClick={() => tab && setZoom(tab.zoom / 1.2)}><I d={icons.zoomOut} /></button>
+      <button data-tip={t("tipZoomOut")} disabled={!has} onClick={() => tab && setZoom(tab.zoom / 1.2)}><I d={icons.zoomOut} /></button>
       <span className="zoom-label">{tab ? Math.round(tab.zoom * 100) + "%" : "—"}</span>
-      <button data-tip="Zoom in (⌘+)" disabled={!has} onClick={() => tab && setZoom(tab.zoom * 1.2)}><I d={icons.zoomIn} /></button>
-      <button data-tip="Fit width" disabled={!has} onClick={() => window.dispatchEvent(new CustomEvent("fitwidth"))}><I d={icons.fit} /></button>
+      <button data-tip={t("tipZoomIn")} disabled={!has} onClick={() => tab && setZoom(tab.zoom * 1.2)}><I d={icons.zoomIn} /></button>
+      <button data-tip={t("tipFit")} disabled={!has} onClick={() => window.dispatchEvent(new CustomEvent("fitwidth"))}><I d={icons.fit} /></button>
       <div className="sep" />
-      <button data-tip="Rotate left" disabled={!has} onClick={() => rotateSelection(-90)}><I d={icons.rotL} /></button>
-      <button data-tip="Rotate right" disabled={!has} onClick={() => rotateSelection(90)}><I d={icons.rotR} /></button>
-      <button data-tip="Delete page(s)" disabled={!has} onClick={() => deleteSelection()}><I d={icons.del} /></button>
-      <button data-tip="Extract page(s) to a new PDF" disabled={!has} onClick={() => extractSelected()}><I d={icons.extract} /></button>
+      <button data-tip={t("tipRotL")} disabled={!has} onClick={() => rotateSelection(-90)}><I d={icons.rotL} /></button>
+      <button data-tip={t("tipRotR")} disabled={!has} onClick={() => rotateSelection(90)}><I d={icons.rotR} /></button>
+      <button data-tip={t("tipDelPages")} disabled={!has} onClick={() => deleteSelection()}><I d={icons.del} /></button>
+      <button data-tip={t("tipExtract")} disabled={!has} onClick={() => extractSelected()}><I d={icons.extract} /></button>
       <div className="sep" />
-      <button className="txt" data-tip="Merge PDF files" onClick={() => mergeFiles()}>
-        <I d={icons.merge} />&nbsp;Merge
+      <button className="txt" data-tip={t("tipMerge")} onClick={() => mergeFiles()}>
+        <I d={icons.merge} />&nbsp;{t("btnMerge")}
       </button>
-      <button className="txt" data-tip="Split into multiple files" disabled={!has} onClick={onSplit}>
-        <I d={icons.split} />&nbsp;Split
+      <button className="txt" data-tip={t("tipSplit")} disabled={!has} onClick={onSplit}>
+        <I d={icons.split} />&nbsp;{t("btnSplit")}
       </button>
       <div className="sep" />
-      <button data-tip="Highlight selected text" disabled={!has} onClick={() => highlightSelection()}><I d={icons.highlight} /></button>
+      <button data-tip={t("tipHighlight")} disabled={!has} onClick={() => highlightSelection()}><I d={icons.highlight} /></button>
       <button
-        data-tip="Add note (N)"
+        data-tip={t("tipNote")}
         disabled={!has}
         className={tool === "note" ? "active" : ""}
         onClick={() => st().setTool(tool === "note" ? "select" : "note")}
@@ -175,7 +181,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         <I d={icons.note} />
       </button>
       <button
-        data-tip="Edit objects (E)"
+        data-tip={t("tipEdit")}
         disabled={!has}
         className={tool === "edit" ? "active" : ""}
         onClick={() => st().setTool(tool === "edit" ? "select" : "edit")}
@@ -183,7 +189,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         <I d={icons.editObj} />
       </button>
       <button
-        data-tip="Delete area (R)"
+        data-tip={t("tipErase")}
         disabled={!has}
         className={tool === "erase" ? "active" : ""}
         onClick={() => st().setTool(tool === "erase" ? "select" : "erase")}
@@ -191,7 +197,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         <I d={icons.erase} />
       </button>
       <button
-        data-tip="Add text (T)"
+        data-tip={t("tipText")}
         disabled={!has}
         className={tool === "text" ? "active" : ""}
         onClick={() => st().setTool(tool === "text" ? "select" : "text")}
@@ -199,7 +205,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         <I d={icons.text} />
       </button>
       <button
-        data-tip="Signature (S)"
+        data-tip={t("tipSign")}
         disabled={!has}
         className={tool === "sign" ? "active" : ""}
         onClick={() => {
@@ -221,7 +227,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       </button>
       <span className="draw-wrap">
         <button
-          data-tip="Draw (D)"
+          data-tip={t("tipDraw")}
           disabled={!has}
           className={tool === "draw" ? "active" : ""}
           onClick={() => {
@@ -241,14 +247,26 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       </span>
       <div className="spacer" />
       <button
-        data-tip="Search (⌘F)"
+        data-tip={t("tipSearch")}
         disabled={!has}
         className={searchOpen ? "active" : ""}
         onClick={() => st().setSearch({ open: !searchOpen })}
       >
         <I d={icons.search} />
       </button>
-      <button data-tip="Toggle theme" onClick={() => st().setTheme(theme === "dark" ? "light" : "dark")}>
+      <button
+        className="txt"
+        data-tip={t("tipLang", {
+          lang: lang === "auto" ? t("langAuto") : lang === "ar" ? t("langAr") : t("langEn"),
+        })}
+        onClick={() => {
+          const next: LangPref = lang === "en" ? "ar" : lang === "ar" ? "auto" : "en";
+          st().setLang(next);
+        }}
+      >
+        {lang === "auto" ? `A·${effectiveLang === "ar" ? "ع" : "EN"}` : lang === "en" ? "ع" : "EN"}
+      </button>
+      <button data-tip={t("tipTheme")} onClick={() => st().setTheme(theme === "dark" ? "light" : "dark")}>
         <I d={theme === "dark" ? icons.sun : icons.moon} />
       </button>
     </div>

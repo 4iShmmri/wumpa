@@ -14,6 +14,7 @@ import ShapeLayer from "./ShapeLayer";
 import TextEditPopover from "./TextEditPopover";
 import { getObjects, adjustedBox } from "../objects";
 import { confirmDialog } from "../backend";
+import { t, t as i18nT, useT } from "../i18n";
 import { report } from "../errors";
 
 function esc(s: string) {
@@ -87,7 +88,7 @@ function ObjectLayer({
         const k = `${tabId}:${spec.src}`;
         if (!objErrOnce.has(k)) {
           objErrOnce.add(k);
-          report("Object editing unavailable on this page", e);
+          report(t("stObjEditUnavailable"), e);
         }
       });
     return () => {
@@ -215,10 +216,10 @@ function ObjectLayer({
           (b) => !(b.pdf[2] < rx1 || b.pdf[0] > rx2 || b.pdf[3] < ry1 || b.pdf[1] > ry2),
         );
         if (!hits.length) {
-          useStore.getState().setStatus("No objects in that area");
+          useStore.getState().setStatus(t("stNoObjectsArea"));
           return;
         }
-        if (await confirmDialog(`Delete ${hits.length} object(s)?`)) {
+        if (await confirmDialog(t("cfDeleteObjects", { n: hits.length }))) {
           addObjectEdits(
             tabId,
             hits.map((b) => ({ src: spec.src, id: b.o.id, action: "delete" as const })),
@@ -273,9 +274,9 @@ function ObjectLayer({
           style={{ left: sel.l, top: Math.max(0, sel.t - 30), pointerEvents: "auto" }}
         >
           {sel.o.kind === "text" && (
-            <button onClick={() => setTextEdit({ id: sel.o.id, pdf: sel.pdf })}>Edit text</button>
+            <button onClick={() => setTextEdit({ id: sel.o.id, pdf: sel.pdf })}>{t("btnEditText")}</button>
           )}
-          <button onClick={() => deleteObject(tabId, spec.src, sel.o.id)}>Delete</button>
+          <button onClick={() => deleteObject(tabId, spec.src, sel.o.id)}>{t("btnDelete")}</button>
         </div>
       )}
       {tool === "edit" && textEdit && (() => {
@@ -325,7 +326,7 @@ function NoteIcon(props: {
       className={"note-icon" + (props.draft ? " draft" : "")}
       style={{ left: props.left, top: props.top, width: props.size, height: props.size }}
       onClick={props.onClick}
-      title={props.draft ? "Note (unsaved)" : "Note"}
+      title={props.draft ? t("noteUnsaved") : t("noteTitle")}
     >
       <svg width="68%" height="68%" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         strokeWidth="2.4" strokeLinejoin="round">
@@ -353,7 +354,7 @@ function NoteEditor(props: {
       <textarea
         autoFocus
         value={text}
-        placeholder="Write a note…"
+        placeholder={t("notePlaceholder")}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
@@ -369,10 +370,10 @@ function NoteEditor(props: {
             props.onDone();
           }}
         >
-          Delete
+          {t("btnDelete")}
         </button>
         <button className="btn-primary" onClick={save}>
-          Save
+          {t("btnSave")}
         </button>
       </div>
     </div>
@@ -384,7 +385,7 @@ function NoteCard(props: { author: string; contents: string; left: number; top: 
     <div className="note-popover" style={{ left: props.left, top: props.top }}>
       {props.author && <div className="note-author">{props.author}</div>}
       <div style={{ whiteSpace: "pre-wrap", userSelect: "text", WebkitUserSelect: "text" }}>
-        {props.contents || "(no text)"}
+        {props.contents || t("noteNoText")}
       </div>
     </div>
   );
@@ -472,7 +473,7 @@ function PdfPage({
     let on = true;
     getAnnots(entry, spec.src)
       .then((a) => on && setAnnots(a))
-      .catch((e) => report("Could not read annotations", e));
+      .catch((e) => report(t("stReadAnnots"), e));
     return () => {
       on = false;
     };
@@ -651,6 +652,7 @@ function PdfPage({
 }
 
 export default function Viewer() {
+  useT();
   const tab = useActiveTab();
   const searchQuery = useStore((s) => (s.search.open ? s.search.query : ""));
   const scrollTarget = useStore((s) => s.scrollTarget);
@@ -680,7 +682,7 @@ export default function Viewer() {
     if (!tab) return;
     getDoc(tab.id, docPath(tab), tab.docVersion)
       .then((e) => on && setEntry(e))
-      .catch((e) => report("Load failed", e));
+      .catch((e) => report(t("stLoadFailed"), e));
     return () => {
       on = false;
     };
@@ -816,7 +818,7 @@ export default function Viewer() {
         }
       }
     } catch (err) {
-      report("Could not place item", err);
+      report(i18nT("stCouldNotPlace"), err);
     }
     st.setTool("select");
   };
@@ -851,18 +853,18 @@ export default function Viewer() {
             </svg>
             <div>
               <h1>Wumpa</h1>
-              <p>Fast, private PDF editing</p>
+              <p>{t("wTagline")}</p>
             </div>
           </div>
           <button className="btn-primary welcome-open" onClick={() => openFileDialog()}>
-            Open PDF…
+            {t("wOpen")}
           </button>
           <button className="welcome-secondary" onClick={() => mergeFiles()}>
-            Merge PDF files…
+            {t("wMerge")}
           </button>
           <div className="welcome-recent">
-            <h3>Recent</h3>
-            {recents.length === 0 && <p className="recent-empty">Files you open appear here</p>}
+            <h3>{t("wRecent")}</h3>
+            {recents.length === 0 && <p className="recent-empty">{t("wRecentEmpty")}</p>}
             {recents.map((r) => (
               <button
                 key={r.path}
@@ -894,14 +896,14 @@ export default function Viewer() {
               <path d="M14 2v6h6" />
               <path d="M8 12h8 M8 15.5h8 M8 19h4" />
             </svg>
-            <h2>Drop PDF files anywhere</h2>
-            <p>or press <kbd>⌘O</kbd> to browse</p>
+            <h2>{t("wHeroTitle")}</h2>
+            <p>{t("wHeroOr")} <kbd>⌘O</kbd> {t("wHeroBrowse")}</p>
             <div className="welcome-hints">
-              <span><kbd>E</kbd> edit objects</span>
-              <span><kbd>T</kbd> add text</span>
-              <span><kbd>S</kbd> signature</span>
-              <span><kbd>D</kbd> draw</span>
-              <span><kbd>⌘F</kbd> search</span>
+              <span><kbd>E</kbd> {t("wHintEdit")}</span>
+              <span><kbd>T</kbd> {t("wHintText")}</span>
+              <span><kbd>S</kbd> {t("wHintSign")}</span>
+              <span><kbd>D</kbd> {t("wHintDraw")}</span>
+              <span><kbd>⌘F</kbd> {t("wHintSearch")}</span>
             </div>
           </div>
         </div>
@@ -926,7 +928,7 @@ export default function Viewer() {
       onScroll={onScroll}
       onClick={tool === "note" || tool === "text" || tool === "sign" ? onViewerClick : undefined}
     >
-      {!entry && <div className="loading">Loading…</div>}
+      {!entry && <div className="loading">{t("loading")}</div>}
       {entry && (
         <div className="pages">
           {tab.pages.map((spec, i) => {

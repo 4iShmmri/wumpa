@@ -3,6 +3,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { loadPdfBytes, baseName } from "./backend";
+import { t } from "./i18n";
 import type { PageSpec } from "./types";
 import { extractTextInRect, type ExtractedText } from "./textExtract";
 
@@ -80,9 +81,7 @@ async function loadDoc(tabId: string, path: string, version: number): Promise<Do
   });
   task.onPassword = (updatePassword: (pw: string) => void, reason: number) => {
     const pw = window.prompt(
-      reason === 2
-        ? "Wrong password. Try again:"
-        : `"${baseName(path)}" is password-protected. Enter password:`,
+      reason === 2 ? t("pwWrong") : t("pwPrompt", { name: baseName(path) }),
     );
     if (pw === null) void task.destroy();
     else updatePassword(pw);

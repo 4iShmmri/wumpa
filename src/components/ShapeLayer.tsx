@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore } from "../store";
+import { useT } from "../i18n";
 import type { ShapeItem, ShapeKind } from "../types";
 import { addShape, moveShape, deleteShape } from "../actions";
 
@@ -85,6 +86,7 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
   zoom: number;
   active: boolean;
 }) {
+  const t = useT();
   const shapeSel = useStore((s) => s.shapeSel);
   const [draft, setDraft] = useState<{ kind: ShapeKind; pts: Pt[] } | null>(null);
   const [ghost, setGhost] = useState<{ id: string; dx: number; dy: number } | null>(null);
@@ -238,7 +240,7 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
               style={{ left: b.l, top: Math.max(0, b.t - 30), pointerEvents: "auto" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <button onClick={() => deleteShape(tabId, sel.id)}>Delete</button>
+              <button onClick={() => deleteShape(tabId, sel.id)}>{t("btnDelete")}</button>
             </div>
           </>
         );

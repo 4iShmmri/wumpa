@@ -15,15 +15,17 @@ import {
 import { deleteStamp } from "./stamps";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
 import { schedulePreview } from "./preview";
+import { t, useT } from "./i18n";
 
 function SplitModal({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const [n, setN] = useState(1);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Split document</h3>
+        <h3>{t("splitTitle")}</h3>
         <label>
-          Split every
+          {t("splitEvery")}
           <input
             type="number"
             min={1}
@@ -38,10 +40,10 @@ function SplitModal({ onClose }: { onClose: () => void }) {
               if (e.key === "Escape") onClose();
             }}
           />
-          page(s)
+          {t("splitPages")}
         </label>
         <div className="modal-actions">
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onClose}>{t("btnCancel")}</button>
           <button
             className="btn-primary"
             onClick={() => {
@@ -49,7 +51,7 @@ function SplitModal({ onClose }: { onClose: () => void }) {
               splitEvery(n);
             }}
           >
-            Choose folder &amp; split
+            {t("btnChooseFolderSplit")}
           </button>
         </div>
       </div>
@@ -82,9 +84,7 @@ export default function App() {
         exitApp();
         return;
       }
-      const ok = await confirmDialog(
-        `${dirty.length} file(s) have unsaved changes. Quit anyway?`,
-      );
+      const ok = await confirmDialog(t("cfQuitUnsaved", { n: dirty.length }));
       if (ok) exitApp();
     }).then((u) => cleanups.push(u));
 
@@ -197,6 +197,18 @@ export default function App() {
           if (sig) st.setTool("sign");
           else st.setSignatureModal(true);
         }
+      } else if (
+        tab && !inInput &&
+        (e.key === "PageDown" || (e.altKey && e.key === "ArrowDown"))
+      ) {
+        e.preventDefault();
+        st.scrollTo(Math.min(tab.pages.length, tab.currentPage + 1));
+      } else if (
+        tab && !inInput &&
+        (e.key === "PageUp" || (e.altKey && e.key === "ArrowUp"))
+      ) {
+        e.preventDefault();
+        st.scrollTo(Math.max(1, tab.currentPage - 1));
       } else if (e.key === "Escape" && tab && !inInput) {
         if (st.stampSel) st.setStampSel(null);
         else if (st.shapeSel) st.setShapeSel(null);

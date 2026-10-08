@@ -8,6 +8,28 @@ import {
 import { getDoc, getPage, getPageText, docPath, specBase } from "./pdf";
 import { report } from "./errors";
 import { measureText, rasterizeStamps } from "./stamps";
+import { t } from "./i18n";
+
+const ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;
+
+async function detectTabLang(
+  tabId: string,
+  entry: Awaited<ReturnType<typeof getDoc>>,
+) {
+  try {
+    let arabic = 0;
+    let letters = 0;
+    for (let p = 1; p <= Math.min(3, entry.numPages); p++) {
+      const text = (await getPageText(entry, p)).slice(0, 6000);
+      letters += (text.match(/\p{L}/gu) ?? []).length;
+      arabic += (text.match(ARABIC_RE) ?? []).length;
+    }
+    const lang = letters > 0 && arabic / letters > 0.25 ? "ar" : "en";
+    S().patchTab(tabId, { detectedLang: lang });
+  } catch {
+    /* detection is best-effort */
+  }
+}
 
 const S = useStore.getState;
 
@@ -68,8 +90,9 @@ export async function openPaths(paths: string[]) {
       };
       S().addTab(tab);
       if (inTauri) pushRecent(path, tab.name);
+      void detectTabLang(id, entry);
     } catch (e) {
-      report(`Could not open ${baseName(path)}`, e);
+      report(t("stCouldNotOpen", { name: baseName(path) }), e);
     }
   }
 }
@@ -101,9 +124,9 @@ export async function saveActive(saveAs: boolean) {
       })),
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
-    S().setStatus(`Saved ${baseName(outPath)}`);
+    S().setStatus(t("stSaved", { name: baseName(outPath) }));
   } catch (e) {
-    report("Save failed", e);
+    report(t("stSaveFailed"), e);
   }
 }
 
@@ -111,7 +134,7 @@ export async function closeTabSafe(id: string) {
   const tab = S().tabs.find((t) => t.id === id);
   if (!tab) return;
   if (tab.dirty) {
-    const ok = await confirmDialog(`"${tab.name}" has unsaved changes. Close without saving?`);
+    const ok = await confirmDialog(t("cfCloseUnsaved", { name: tab.name }));
     if (!ok) return;
   }
   S().closeTab(id);
@@ -120,7 +143,7 @@ export async function closeTabSafe(id: string) {
 export async function mergeFiles() {
   const paths = await pickPdfs(true);
   if (!paths || paths.length < 2) {
-    if (paths) S().setStatus("Pick at least two PDF files to merge");
+    if (paths) S().setStatus(t("stPickTwo"));
     return;
   }
   const out = await pickSavePath("merged.pdf");
@@ -128,10 +151,10 @@ export async function mergeFiles() {
   const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
   try {
     await mergeDocuments(paths, outPath);
-    S().setStatus(`Merged ${paths.length} files`);
+    S().setStatus(t("stMerged", { n: paths.length }));
     await openPaths([outPath]);
   } catch (e) {
-    report("Merge failed", e);
+    report(t("stMergeFailed"), e);
   }
 }
 
@@ -146,10 +169,10 @@ export async function extractSelected() {
   const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
   try {
     await saveDocument(tab.path, outPath, specs, [], [], tab.edits, [], []);
-    S().setStatus(`Extracted ${specs.length} page(s)`);
+    S().setStatus(t("stExtracted", { n: specs.length }));
     await openPaths([outPath]);
   } catch (e) {
-    report("Extract failed", e);
+    report(t("stExtractFailed"), e);
   }
 }
 
@@ -166,9 +189,9 @@ export async function splitEvery(n: number) {
   }
   try {
     await splitDocument(tab.path, parts);
-    S().setStatus(`Split into ${parts.length} files in ${baseName(dirName(parts[0].out_path))}/`);
+    S().setStatus(t("stSplitDone", { n: parts.length, dir: baseName(dirName(parts[0].out_path)) }));
   } catch (e) {
-    report("Split failed", e);
+    report(t("stSplitFailed"), e);
   }
 }
 
@@ -188,7 +211,7 @@ export function deleteSelection() {
   if (!tab) return;
   const indices = tab.selected.length ? tab.selected : [tab.currentPage - 1];
   if (indices.length >= tab.pages.length) {
-    S().setStatus("Cannot delete all pages");
+    S().setStatus(t("stCannotDeleteAll"));
     return;
   }
   S().mutateDoc(tab.id, (t) => ({
@@ -270,9 +293,9 @@ export async function exportPageAsPng(tabId: string, index: number) {
     }
     const dataB64 = canvas.toDataURL("image/png").split(",")[1];
     await savePng(path, dataB64);
-    S().setStatus(`Exported page ${index + 1} as PNG`);
+    S().setStatus(t("stExportedPng", { n: index + 1 }));
   } catch (e) {
-    report("PNG export failed", e);
+    report(t("stPngFailed"), e);
   }
 }
 
@@ -291,9 +314,9 @@ export async function printActive() {
         color: sh.color, width: sh.width, opacity: sh.opacity,
       })),
     );
-    S().setStatus("Opening in system viewer for printing…");
+    S().setStatus(t("stPrintOpening"));
   } catch (e) {
-    report("Print failed", e);
+    report(t("stPrintFailed"), e);
   }
 }
 
@@ -412,7 +435,7 @@ export async function highlightSelection() {
   if (!tab) return;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-    S().setStatus("Select some text first, then click Highlight");
+    S().setStatus(t("stSelectTextFirst"));
     return;
   }
   const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
@@ -436,7 +459,7 @@ export async function highlightSelection() {
     }
   }
   if (byIndex.size === 0) {
-    S().setStatus("Could not map the selection to a page");
+    S().setStatus(t("stSelectionMap"));
     return;
   }
 
@@ -457,7 +480,7 @@ export async function highlightSelection() {
     }));
   }
   sel.removeAllRanges();
-  S().setStatus("Highlight added (saved into the PDF on save)");
+  S().setStatus(t("stHighlightAdded"));
 }
 
 export async function runSearch(query: string) {
@@ -483,7 +506,7 @@ export async function runSearch(query: string) {
       if (matches.length) store.scrollTo(matches[0] + 1);
     }
   } catch (e) {
-    report("Search failed", e);
+    report(t("stSearchFailed"), e);
   }
 }
 

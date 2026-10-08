@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getTextInRect, type DocEntry } from "../pdf";
 import { replaceTextObject } from "../actions";
 import { STAMP_FONT, STAMP_LINE } from "../stamps";
+import { useT } from "../i18n";
 
 const COLORS = ["#111111", "#c0392b", "#1d4ed8"];
 
@@ -18,6 +19,7 @@ export default function TextEditPopover({
   zoom: number;
   onDone: () => void;
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [size, setSize] = useState(14);
   const [color, setColor] = useState(COLORS[0]);
@@ -97,27 +99,27 @@ export default function TextEditPopover({
           color,
         }}
         placeholder={
-          unreadable ? "Original text could not be read — type replacement" : "Loading…"
+          unreadable ? t("teUnreadable") : t("teLoading")
         }
         onChange={(e) => setText(e.target.value)}
       />
       <div className="te-tools">
-        <button title="Smaller" onClick={() => setSize((v) => Math.max(6, v - 2))}>A−</button>
-        <button title="Larger" onClick={() => setSize((v) => Math.min(120, v + 2))}>A+</button>
+        <button title={t("tipSmaller")} onClick={() => setSize((v) => Math.max(6, v - 2))}>A−</button>
+        <button title={t("tipLarger")} onClick={() => setSize((v) => Math.min(120, v + 2))}>A+</button>
         <span className="te-size">{Math.round(size)}pt</span>
         {COLORS.map((c) => (
           <button
             key={c}
             className={"dot" + (color === c ? " on" : "")}
             style={{ background: c }}
-            title="Color"
+            title={t("tipColor")}
             onClick={() => setColor(c)}
           />
         ))}
       </div>
       <div className="row">
-        <button onClick={onDone}>Cancel</button>
-        <button className="btn-primary" onClick={replace}>Replace</button>
+        <button onClick={onDone}>{t("btnCancel")}</button>
+        <button className="btn-primary" onClick={replace}>{t("btnReplace")}</button>
       </div>
     </div>
   );

@@ -90,4 +90,5 @@ export interface Tab {
   selected: number[]; // 0-based indices into pages[]
   dirty: boolean;
   docVersion: number; // bumped when the file on disk changes (after save)
+  detectedLang?: "en" | "ar";
 }

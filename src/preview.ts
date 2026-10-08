@@ -1,6 +1,7 @@
 import { useStore } from "./store";
 import { applyEditsPreview } from "./backend";
 import { report } from "./errors";
+import { t } from "./i18n";
 
 const timers = new Map<string, number>();
 const nonces = new Map<string, number>();
@@ -37,6 +38,6 @@ async function run(tabId: string) {
       useStore.getState().patchTab(tabId, { previewPath: p, docVersion: cur.docVersion + 1 });
     }
   } catch (e) {
-    report("Edit preview failed", e);
+    report(t("stPreviewFailed"), e);
   }
 }

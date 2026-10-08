@@ -7,6 +7,7 @@ import {
   rotateSelection, deleteSelection, extractSelected,
 } from "../actions";
 import { report } from "../errors";
+import { t, useT } from "../i18n";
 
 const THUMB_W = 132;
 
@@ -59,6 +60,7 @@ function Thumb({ entry, spec }: { entry: DocEntry; spec: PageSpec }) {
 }
 
 export default function Sidebar() {
+  const tr = useT();
   const tab = useActiveTab();
   const [entry, setEntry] = useState<DocEntry | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -76,7 +78,7 @@ export default function Sidebar() {
     if (!tab) return;
     getDoc(tab.id, docPath(tab), tab.docVersion)
       .then((e) => on && setEntry(e))
-      .catch((e) => report("Load failed", e));
+      .catch((e) => report(t("stLoadFailed"), e));
     return () => {
       on = false;
     };
@@ -214,25 +216,25 @@ export default function Sidebar() {
             top: Math.min(menu.y, window.innerHeight - 290),
           }}
         >
-          {item("Duplicate page", () => duplicatePage(tab.id, menu.index))}
-          {item("Insert blank before", () => insertBlankPage(tab.id, menu.index))}
-          {item("Insert blank after", () => insertBlankPage(tab.id, menu.index + 1))}
-          {item("Export as PNG…", () => exportPageAsPng(tab.id, menu.index))}
+          {item(tr("ctxDuplicate"), () => duplicatePage(tab.id, menu.index))}
+          {item(tr("ctxInsertBefore"), () => insertBlankPage(tab.id, menu.index))}
+          {item(tr("ctxInsertAfter"), () => insertBlankPage(tab.id, menu.index + 1))}
+          {item(tr("ctxExportPng"), () => exportPageAsPng(tab.id, menu.index))}
           <div className="ctx-sep" />
-          {item("Rotate left", () => {
+          {item(tr("ctxRotL"), () => {
             ensureSel(menu.index);
             rotateSelection(-90);
           })}
-          {item("Rotate right", () => {
+          {item(tr("ctxRotR"), () => {
             ensureSel(menu.index);
             rotateSelection(90);
           })}
           <div className="ctx-sep" />
-          {item("Extract page(s)…", () => {
+          {item(tr("ctxExtract"), () => {
             ensureSel(menu.index);
             extractSelected();
           })}
-          {item("Delete page(s)", () => {
+          {item(tr("ctxDelete"), () => {
             ensureSel(menu.index);
             deleteSelection();
           })}

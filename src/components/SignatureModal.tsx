@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
+import { useT } from "../i18n";
 
 const W = 500;
 const H = 200;
@@ -41,6 +42,7 @@ function redraw(canvas: HTMLCanvasElement, strokes: Stroke[]) {
 }
 
 export default function SignatureModal() {
+  const t = useT();
   const open = useStore((s) => s.signatureModalOpen);
   const [saved, setSaved] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -140,16 +142,16 @@ export default function SignatureModal() {
   return (
     <div className="modal-backdrop" onClick={close}>
       <div className="modal sig-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Signature</h3>
+        <h3>{t("sigTitle")}</h3>
         {!drawing && saved ? (
           <>
             <div className="sig-preview">
-              <img src={saved} alt="Saved signature" />
+              <img src={saved} alt={t("sigAlt")} />
             </div>
             <div className="modal-actions">
-              <button onClick={close}>Cancel</button>
-              <button onClick={() => setDrawing(true)}>Draw new</button>
-              <button className="btn-primary" onClick={use}>Use</button>
+              <button onClick={close}>{t("btnCancel")}</button>
+              <button onClick={() => setDrawing(true)}>{t("btnDrawNew")}</button>
+              <button className="btn-primary" onClick={use}>{t("btnUse")}</button>
             </div>
           </>
         ) : (
@@ -166,10 +168,10 @@ export default function SignatureModal() {
               <div className="sig-baseline" />
             </div>
             <div className="modal-actions">
-              <button onClick={clear}>Clear</button>
-              <button onClick={close}>Cancel</button>
+              <button onClick={clear}>{t("btnClear")}</button>
+              <button onClick={close}>{t("btnCancel")}</button>
               <button className="btn-primary" disabled={!hasInk} onClick={save}>
-                Save &amp; use
+                {t("btnSaveUse")}
               </button>
             </div>
           </>

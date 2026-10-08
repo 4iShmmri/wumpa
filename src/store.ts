@@ -4,6 +4,7 @@ import { evictDoc } from "./pdf";
 import { evictObjects } from "./objects";
 
 export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign" | "draw";
+export type LangPref = "en" | "ar" | "auto";
 
 export interface ObjSel {
   src: number;
@@ -33,8 +34,11 @@ interface AppState {
   drawKind: ShapeKind;
   drawColor: [number, number, number];
   drawWidth: number;
+  lang: LangPref;
+  effectiveLang: "en" | "ar";
 
   addTab: (tab: Tab) => void;
+  setLang: (lang: LangPref) => void;
   closeTab: (id: string) => void;
   setActive: (id: string) => void;
   patchTab: (id: string, patch: Partial<Tab>) => void;
@@ -73,6 +77,22 @@ const initialTheme: "light" | "dark" =
   (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 document.documentElement.dataset.theme = initialTheme;
 
+function readLangPref(): LangPref {
+  try {
+    const v = localStorage.getItem("lang");
+    return v === "en" || v === "ar" || v === "auto" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function computeEffective(lang: LangPref, tabs: Tab[], activeId: string | null): "en" | "ar" {
+  if (lang !== "auto") return lang;
+  return tabs.find((t) => t.id === activeId)?.detectedLang ?? "en";
+}
+
+const initialLang = readLangPref();
+
 export const useStore = create<AppState>((set, get) => ({
   tabs: [],
   activeId: null,
@@ -89,6 +109,17 @@ export const useStore = create<AppState>((set, get) => ({
   drawKind: "ink",
   drawColor: [0.86, 0.21, 0.18],
   drawWidth: 2.5,
+  lang: initialLang,
+  effectiveLang: computeEffective(initialLang, [], null),
+
+  setLang: (lang) => {
+    try {
+      localStorage.setItem("lang", lang);
+    } catch {
+      /* best effort */
+    }
+    set({ lang });
+  },
 
   addTab: (tab) =>
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
@@ -255,6 +286,21 @@ export const useStore = create<AppState>((set, get) => ({
   setDrawColor: (drawColor) => set({ drawColor }),
   setDrawWidth: (drawWidth) => set({ drawWidth }),
 }));
+
+function applyLangAttrs(l: "en" | "ar") {
+  document.documentElement.dir = l === "ar" ? "rtl" : "ltr";
+  document.documentElement.lang = l;
+}
+
+applyLangAttrs(useStore.getState().effectiveLang);
+
+useStore.subscribe((s) => {
+  const next = computeEffective(s.lang, s.tabs, s.activeId);
+  if (next !== s.effectiveLang) {
+    useStore.setState({ effectiveLang: next });
+    applyLangAttrs(next);
+  }
+});
 
 export function useActiveTab(): Tab | null {
   return useStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? null);

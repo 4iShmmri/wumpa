@@ -1,4 +1,5 @@
 mod editor;
+mod media;
 mod pdf_ops;
 mod stamps;
 
@@ -162,6 +163,35 @@ async fn split_document(src_path: String, parts: Vec<SplitPart>) -> Result<(), S
 }
 
 #[tauri::command]
+async fn compress_pdf(
+    src_path: String,
+    out_path: String,
+    quality: u8,
+    max_dim: u32,
+) -> Result<[u64; 2], String> {
+    media::compress_file(&src_path, &out_path, quality, max_dim)
+}
+
+fn new_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("wumpa-new")
+}
+
+#[tauri::command]
+async fn create_blank_pdf(w: f64, h: f64, pages: u32) -> Result<String, String> {
+    let mut doc = media::blank_document(w.clamp(72.0, 5000.0), h.clamp(72.0, 5000.0), pages.clamp(1, 50));
+    let dir = new_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(unique_pdf_name());
+    doc.save(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn read_image_b64(path: String) -> Result<String, String> {
+    media::image_file_to_data_url(&path)
+}
+
+#[tauri::command]
 fn take_pending_files(state: tauri::State<'_, PendingFiles>) -> Vec<String> {
     state
         .0
@@ -207,6 +237,7 @@ pub fn run() {
         .setup(|app| {
             let _ = std::fs::remove_dir_all(preview_dir());
             let _ = std::fs::remove_dir_all(print_dir());
+            let _ = std::fs::remove_dir_all(new_dir());
             let args: Vec<String> = std::env::args().skip(1).filter(|a| is_pdf_path(a)).collect();
             if !args.is_empty() {
                 if let Ok(mut v) = app.state::<PendingFiles>().0.lock() {
@@ -231,7 +262,10 @@ pub fn run() {
             list_page_objects,
             apply_edits_preview,
             print_document,
-            save_png
+            save_png,
+            compress_pdf,
+            create_blank_pdf,
+            read_image_b64
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

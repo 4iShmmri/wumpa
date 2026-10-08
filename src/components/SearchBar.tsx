@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../store";
 import { runSearch, searchStep } from "../actions";
+import { useT } from "../i18n";
 
 export default function SearchBar() {
+  const t = useT();
   const search = useStore((s) => s.search);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<number | undefined>(undefined);
@@ -20,7 +22,7 @@ export default function SearchBar() {
       <input
         ref={inputRef}
         autoFocus
-        placeholder="Find in document…"
+        placeholder={t("searchPlaceholder")}
         value={search.query}
         onChange={(e) => {
           const q = e.target.value;
@@ -36,9 +38,9 @@ export default function SearchBar() {
       <span className="search-count">
         {search.matches.length ? `${search.current + 1}/${search.matches.length}` : "0"}
       </span>
-      <button onClick={() => searchStep(-1)} data-tip="Previous (⇧Enter)">‹</button>
-      <button onClick={() => searchStep(1)} data-tip="Next (Enter)">›</button>
-      <button onClick={close} data-tip="Close (Esc)">×</button>
+      <button onClick={() => searchStep(-1)} data-tip={t("tipPrevMatch")}>‹</button>
+      <button onClick={() => searchStep(1)} data-tip={t("tipNextMatch")}>›</button>
+      <button onClick={close} data-tip={t("tipCloseSearch")}>×</button>
     </div>
   );
 }

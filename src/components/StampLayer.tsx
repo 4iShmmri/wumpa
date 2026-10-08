@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore } from "../store";
+import { useT } from "../i18n";
 import type { StampItem } from "../types";
 import {
   moveStamp, resizeStamp, deleteStamp, updateTextStamp,
@@ -98,6 +99,7 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
   viewport: PageViewport;
   zoom: number;
 }) {
+  const t = useT();
   const stampSel = useStore((s) => s.stampSel);
   const editing = useStore((s) => s.stampEditing);
   const [ghost, setGhost] = useState<{ id: string; dx: number; dy: number; scale: number } | null>(null);
@@ -209,7 +211,7 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                   {s.kind === "text" && (
                     <>
                       <button
-                        title="Smaller"
+                        title={t("tipSmaller")}
                         onClick={() =>
                           updateTextStamp(tabId, s.id, {
                             size: Math.max(6, (s.size ?? 16) - 2),
@@ -219,7 +221,7 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                         A−
                       </button>
                       <button
-                        title="Larger"
+                        title={t("tipLarger")}
                         onClick={() =>
                           updateTextStamp(tabId, s.id, {
                             size: Math.min(120, (s.size ?? 16) + 2),
@@ -233,20 +235,20 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                           key={c}
                           className={"dot" + (s.color === c ? " on" : "")}
                           style={{ background: c }}
-                          title="Color"
+                          title={t("tipColor")}
                           onClick={() => updateTextStamp(tabId, s.id, { color: c })}
                         />
                       ))}
                       <button
-                        title="Edit text"
+                        title={t("tipEditText")}
                         onClick={() => useStore.getState().setStampEditing(s.id)}
                       >
-                        Edit
+                        {t("btnEdit")}
                       </button>
                     </>
                   )}
-                  <button title="Delete" onClick={() => deleteStamp(tabId, s.id)}>
-                    Delete
+                  <button title={t("tipDelete")} onClick={() => deleteStamp(tabId, s.id)}>
+                    {t("btnDelete")}
                   </button>
                 </div>
               </>
