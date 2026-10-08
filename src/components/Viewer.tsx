@@ -5,7 +5,7 @@ import { useStore, useActiveTab, type Tool } from "../store";
 import { getDoc, getPage, getAnnots, docPath, specBase, type DocEntry, type ExistingAnnot } from "../pdf";
 import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem, ShapeItem } from "../types";
 import {
-  openFileDialog, openPaths, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
+  openFileDialog, openPaths, mergeFiles, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
   getRecentFiles, dropRecent, type RecentFile,
 } from "../actions";
 import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
@@ -842,37 +842,68 @@ export default function Viewer() {
   if (!tab) {
     return (
       <div className="viewer welcome">
-        <div className="welcome-box">
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6" />
-          </svg>
-          <h2>Open a PDF to get started</h2>
-          <p>Drag &amp; drop files anywhere, or</p>
-          <button className="btn-primary" onClick={() => openFileDialog()}>
+        <aside className="welcome-side">
+          <div className="welcome-brand">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+              <path d="M8 13h8 M8 17h5" />
+            </svg>
+            <div>
+              <h1>Wumpa</h1>
+              <p>Fast, private PDF editing</p>
+            </div>
+          </div>
+          <button className="btn-primary welcome-open" onClick={() => openFileDialog()}>
             Open PDF…
           </button>
-          {recents.length > 0 && (
-            <div className="welcome-recent">
-              <h3>Recent</h3>
-              {recents.map((r) => (
-                <button
-                  key={r.path}
-                  className="recent-row"
-                  onClick={async () => {
-                    await openPaths([r.path]);
-                    if (!useStore.getState().tabs.some((t) => t.path === r.path)) {
-                      dropRecent(r.path);
-                      setRecents(getRecentFiles());
-                    }
-                  }}
-                >
+          <button className="welcome-secondary" onClick={() => mergeFiles()}>
+            Merge PDF files…
+          </button>
+          <div className="welcome-recent">
+            <h3>Recent</h3>
+            {recents.length === 0 && <p className="recent-empty">Files you open appear here</p>}
+            {recents.map((r) => (
+              <button
+                key={r.path}
+                className="recent-row"
+                title={r.path}
+                onClick={async () => {
+                  await openPaths([r.path]);
+                  if (!useStore.getState().tabs.some((t) => t.path === r.path)) {
+                    dropRecent(r.path);
+                    setRecents(getRecentFiles());
+                  }
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                </svg>
+                <span className="recent-meta">
                   <span className="recent-name">{r.name}</span>
                   <span className="recent-path">{r.path}</span>
-                </button>
-              ))}
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+        <div className="welcome-main">
+          <div className="welcome-hero">
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+              <path d="M8 12h8 M8 15.5h8 M8 19h4" />
+            </svg>
+            <h2>Drop PDF files anywhere</h2>
+            <p>or press <kbd>⌘O</kbd> to browse</p>
+            <div className="welcome-hints">
+              <span><kbd>E</kbd> edit objects</span>
+              <span><kbd>T</kbd> add text</span>
+              <span><kbd>S</kbd> signature</span>
+              <span><kbd>D</kbd> draw</span>
+              <span><kbd>⌘F</kbd> search</span>
             </div>
-          )}
+          </div>
         </div>
       </div>
     );
