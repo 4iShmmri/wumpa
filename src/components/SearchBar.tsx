@@ -36,9 +36,9 @@ export default function SearchBar() {
       <span className="search-count">
         {search.matches.length ? `${search.current + 1}/${search.matches.length}` : "0"}
       </span>
-      <button onClick={() => searchStep(-1)} title="Previous (⇧Enter)">‹</button>
-      <button onClick={() => searchStep(1)} title="Next (Enter)">›</button>
-      <button onClick={close} title="Close (Esc)">×</button>
+      <button onClick={() => searchStep(-1)} data-tip="Previous (⇧Enter)">‹</button>
+      <button onClick={() => searchStep(1)} data-tip="Next (Enter)">›</button>
+      <button onClick={close} data-tip="Close (Esc)">×</button>
     </div>
   );
 }

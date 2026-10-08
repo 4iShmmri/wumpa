@@ -34,7 +34,7 @@ export default function TabBar() {
           </span>
         </div>
       ))}
-      <button className="tab-add" title="Open PDF (⌘O)" onClick={() => openFileDialog()}>
+      <button className="tab-add" data-tip="Open PDF (⌘O)" onClick={() => openFileDialog()}>
         +
       </button>
     </div>
