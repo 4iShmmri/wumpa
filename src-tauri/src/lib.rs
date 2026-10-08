@@ -1,10 +1,16 @@
 mod editor;
+mod links;
 mod media;
+mod outline;
 mod pdf_ops;
+mod security;
+mod signing;
 mod stamps;
 
 use editor::ObjectEdit;
-use pdf_ops::{Highlight, Note, PageSpec, Shape};
+use links::{LinkRemoval, LinkSpec};
+use outline::OutlineNode;
+use pdf_ops::{Extras, Highlight, Note, PageSpec, Shape};
 use stamps::Stamp;
 use serde::Deserialize;
 use std::sync::Mutex;
@@ -29,16 +35,18 @@ fn apply_all_and_save(
     edits: &[ObjectEdit],
     stamps: &[Stamp],
     shapes: &[Shape],
+    extras: &Extras,
 ) -> Result<(), String> {
     let mut doc = lopdf::Document::load(src_path).map_err(|e| e.to_string())?;
     editor::apply_edits(&mut doc, edits)?;
     stamps::apply_stamps(&mut doc, stamps)?;
-    pdf_ops::rebuild(&mut doc, pages, highlights, notes, shapes)?;
+    pdf_ops::rebuild_with(&mut doc, pages, highlights, notes, shapes, extras)?;
     doc.save(out_path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn save_document(
     src_path: String,
     out_path: String,
@@ -48,7 +56,17 @@ async fn save_document(
     edits: Vec<ObjectEdit>,
     stamps: Vec<Stamp>,
     shapes: Vec<Shape>,
+    outline: Option<Vec<OutlineNode>>,
+    links: Option<Vec<LinkSpec>>,
+    link_removals: Option<Vec<LinkRemoval>>,
 ) -> Result<(), String> {
+    let links = links.unwrap_or_default();
+    let link_removals = link_removals.unwrap_or_default();
+    let extras = Extras {
+        outline: outline.as_deref(),
+        links: &links,
+        link_removals: &link_removals,
+    };
     apply_all_and_save(
         &src_path,
         std::path::Path::new(&out_path),
@@ -58,6 +76,7 @@ async fn save_document(
         &edits,
         &stamps,
         &shapes,
+        &extras,
     )
 }
 
@@ -88,6 +107,7 @@ async fn print_document(
     let path = dir.join(unique_pdf_name());
     apply_all_and_save(
         &src_path, &path, &pages, &highlights, &notes, &edits, &stamps, &shapes,
+        &Extras::default(),
     )?;
     tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().to_string())
@@ -192,6 +212,47 @@ async fn read_image_b64(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn encrypt_pdf(
+    src_path: String,
+    out_path: String,
+    user_password: String,
+    owner_password: String,
+    permissions: security::Permissions,
+) -> Result<(), String> {
+    security::encrypt_file(&src_path, &out_path, &user_password, &owner_password, permissions)
+}
+
+#[tauri::command]
+async fn security_info(path: String) -> Result<security::SecurityInfo, String> {
+    security::info(&path)
+}
+
+#[tauri::command]
+async fn remove_security(src_path: String, out_path: String, password: String) -> Result<(), String> {
+    security::remove_file(&src_path, &out_path, &password)
+}
+
+#[tauri::command]
+async fn create_digital_id(req: signing::NewIdRequest) -> Result<signing::IdInfo, String> {
+    signing::create_id(&req)
+}
+
+#[tauri::command]
+async fn digital_id_info(p12_path: String, password: String) -> Result<signing::IdInfo, String> {
+    signing::id_info(&p12_path, &password)
+}
+
+#[tauri::command]
+async fn sign_pdf(req: signing::SignRequest) -> Result<(), String> {
+    signing::sign_file(&req)
+}
+
+#[tauri::command]
+async fn verify_signatures(path: String) -> Result<Vec<signing::SigInfo>, String> {
+    signing::verify_file(&path)
+}
+
+#[tauri::command]
 fn take_pending_files(state: tauri::State<'_, PendingFiles>) -> Vec<String> {
     state
         .0
@@ -265,7 +326,14 @@ pub fn run() {
             save_png,
             compress_pdf,
             create_blank_pdf,
-            read_image_b64
+            read_image_b64,
+            encrypt_pdf,
+            security_info,
+            remove_security,
+            create_digital_id,
+            digital_id_info,
+            sign_pdf,
+            verify_signatures
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

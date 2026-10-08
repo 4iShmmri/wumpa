@@ -1,12 +1,15 @@
 import { useStore, getActiveTab } from "./store";
-import type { Tab, Note, ObjectEdit, StampItem, ShapeItem } from "./types";
+import type { Tab, Note, ObjectEdit, StampItem, ShapeItem, Bookmark, LinkItem, Rect } from "./types";
 import {
   pickPdfs, pickSavePath, pickSavePathWithExt, pickDirectory, saveDocument,
   mergeDocuments, splitDocument, baseName, dirName, confirmDialog,
   printDocument, savePng, inTauri, compressPdf, createBlankPdf,
-  readImageB64, pickImagePath,
+  readImageB64, pickImagePath, type SaveExtras,
 } from "./backend";
 import { getDoc, getPage, getPageText, docPath, specBase } from "./pdf";
+import {
+  loadBookmarks, outlineToWire, linksToWire, linkRemovalsToWire, newBookmark,
+} from "./outline";
 import { report } from "./errors";
 import { measureText, rasterizeStamps, addTextStampAt, addImageStamp, loadImage } from "./stamps";
 import { t } from "./i18n";
@@ -85,13 +88,16 @@ export async function openPaths(paths: string[]) {
       const tab: Tab = {
         id, path, name: baseName(path),
         pages: Array.from({ length: entry.numPages }, (_, i) => ({ src: i + 1, rotation: 0 })),
-        highlights: [], notes: [], edits: [], stamps: [], shapes: [], previewPath: null, past: [], future: [],
+        highlights: [], notes: [], edits: [], stamps: [], shapes: [],
+        bookmarks: null, links: [], linkRemovals: [],
+        previewPath: null, past: [], future: [],
         zoom: 1, currentPage: 1, selected: [],
         dirty: false, docVersion: 0,
       };
       S().addTab(tab);
       if (inTauri) pushRecent(path, tab.name);
       void detectTabLang(id, entry);
+      void loadBookmarks(entry.doc).then((bms) => S().patchTab(id, { bookmarks: bms }));
     } catch (e) {
       report(t("stCouldNotOpen", { name: baseName(path) }), e);
     }
@@ -123,11 +129,33 @@ export async function saveActive(saveAs: boolean) {
         src: sh.src, kind: sh.kind, rect: sh.rect, strokes: sh.strokes,
         color: sh.color, width: sh.width, opacity: sh.opacity,
       })),
+      saveExtras(tab),
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
     S().setStatus(t("stSaved", { name: baseName(outPath) }));
+    void refreshBookmarks(tab.id);
   } catch (e) {
     report(t("stSaveFailed"), e);
+  }
+}
+
+function saveExtras(tab: Tab): SaveExtras {
+  return {
+    outline: tab.bookmarks ? outlineToWire(tab.bookmarks, tab.pages) : null,
+    links: linksToWire(tab.links, tab.pages),
+    linkRemovals: linkRemovalsToWire(tab.linkRemovals, tab.pages),
+  };
+}
+
+async function refreshBookmarks(tabId: string) {
+  const tab = S().tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  try {
+    const entry = await getDoc(tabId, docPath(tab), tab.docVersion);
+    const bms = await loadBookmarks(entry.doc);
+    S().patchTab(tabId, { bookmarks: bms });
+  } catch {
+    /* best effort */
   }
 }
 
@@ -683,4 +711,183 @@ export async function compareActive() {
   } catch (e) {
     report(t("stCmpFailed"), e);
   }
+}
+
+// ---- Bookmarks (outline) ----
+
+function mapTree(nodes: Bookmark[], fn: (b: Bookmark) => Bookmark): Bookmark[] {
+  return nodes.map((n) => fn({ ...n, children: mapTree(n.children, fn) }));
+}
+
+function removeNode(nodes: Bookmark[], id: string): Bookmark[] {
+  return nodes
+    .filter((n) => n.id !== id)
+    .map((n) => ({ ...n, children: removeNode(n.children, id) }));
+}
+
+function currentBookmarks(tab: Tab): Bookmark[] {
+  return tab.bookmarks ?? [];
+}
+
+export function addBookmarkHere() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const spec = tab.pages[tab.currentPage - 1];
+  const src = spec && spec.src > 0 ? spec.src : 0;
+  const title = t("bmNewTitle", { n: tab.currentPage });
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: [...currentBookmarks(tt), newBookmark(title, src, null)],
+  }));
+}
+
+export function renameBookmark(id: string, title: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, title } : b)),
+  }));
+}
+
+export function retargetBookmark(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const spec = tab.pages[tab.currentPage - 1];
+  const src = spec && spec.src > 0 ? spec.src : 0;
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, src, url: null, top: null } : b)),
+  }));
+}
+
+export function deleteBookmark(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({ bookmarks: removeNode(currentBookmarks(tt), id) }));
+}
+
+export function toggleBookmarkOpen(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, open: !b.open } : b)),
+  }));
+}
+
+// Apply `fn` to the sibling list that contains `id`, wherever it sits in the tree.
+function editSiblings(
+  nodes: Bookmark[],
+  id: string,
+  fn: (list: Bookmark[], i: number) => Bookmark[] | null,
+): Bookmark[] {
+  const i = nodes.findIndex((n) => n.id === id);
+  if (i >= 0) return fn([...nodes], i) ?? nodes;
+  return nodes.map((n) => ({ ...n, children: editSiblings(n.children, id, fn) }));
+}
+
+export function moveBookmark(id: string, dir: -1 | 1) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: editSiblings(currentBookmarks(tt), id, (list, i) => {
+      const j = i + dir;
+      if (j < 0 || j >= list.length) return null;
+      [list[i], list[j]] = [list[j], list[i]];
+      return list;
+    }),
+  }));
+}
+
+export function indentBookmark(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarks: editSiblings(currentBookmarks(tt), id, (list, i) => {
+      if (i === 0) return null;
+      const prev = list[i - 1];
+      list[i - 1] = { ...prev, open: true, children: [...prev.children, list[i]] };
+      list.splice(i, 1);
+      return list;
+    }),
+  }));
+}
+
+function liftOut(nodes: Bookmark[], id: string): Bookmark[] {
+  for (let p = 0; p < nodes.length; p++) {
+    const parent = nodes[p];
+    const node = parent.children.find((c) => c.id === id);
+    if (node) {
+      const out = [...nodes];
+      out[p] = { ...parent, children: parent.children.filter((c) => c.id !== id) };
+      out.splice(p + 1, 0, node);
+      return out;
+    }
+  }
+  return nodes.map((n) => ({ ...n, children: liftOut(n.children, id) }));
+}
+
+export function outdentBookmark(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({ bookmarks: liftOut(currentBookmarks(tt), id) }));
+}
+
+export function gotoBookmark(bm: Bookmark) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  if (bm.url) {
+    void openLinkUrl(bm.url);
+    return;
+  }
+  if (bm.src > 0) {
+    const out = tab.pages.findIndex((p) => p.src === bm.src);
+    if (out >= 0) S().scrollTo(out + 1);
+  }
+}
+
+// ---- Interactive links ----
+
+export function addLink(src: number, rect: Rect, target: { url?: string; destSrc?: number }) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const link: LinkItem = {
+    id: crypto.randomUUID(),
+    src,
+    rect,
+    url: target.url ?? null,
+    destSrc: target.destSrc ?? null,
+  };
+  S().mutateDoc(tab.id, (tt) => ({ links: [...tt.links, link] }));
+}
+
+export function deleteLink(id: string) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({ links: tt.links.filter((l) => l.id !== id) }));
+}
+
+// An existing link baked into the file: record a removal to apply on save.
+export function removeExistingLink(src: number, rect: Rect) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  S().mutateDoc(tab.id, (tt) => ({ linkRemovals: [...tt.linkRemovals, { src, rect }] }));
+}
+
+export async function openLinkUrl(url: string) {
+  const safe = /^https?:\/\//i.test(url);
+  if (!safe) {
+    S().setStatus(t("lnkBlocked"));
+    return;
+  }
+  const { openExternalUrl } = await import("./backend");
+  await openExternalUrl(url);
+}
+
+export function followLink(target: { url?: string | null; destSrc?: number | null }) {
+  if (target.url) {
+    void openLinkUrl(target.url);
+    return;
+  }
+  const tab = getActiveTab();
+  if (!tab || !target.destSrc) return;
+  const out = tab.pages.findIndex((p) => p.src === target.destSrc);
+  if (out >= 0) S().scrollTo(out + 1);
 }

@@ -112,6 +112,7 @@ const icons = {
   text: "M4 7V5h16v2 M12 5v14 M9 19h6",
   sign: "M3 17c3-6 5-8 6-6s-1 5 1 5 3-7 5-5-1 6 2 6h4",
   draw: "M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z",
+  link: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71 M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
@@ -314,6 +315,10 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         }}
       >
         <I d={icons.sign} />
+      </button>
+      <button data-tip={t("tipLink")} disabled={!has} className={tool === "link" ? "active" : ""}
+        onClick={() => toggleTool("link")}>
+        <I d={icons.link} />
       </button>
       <button data-tip={t("tipEdit")} disabled={!has} className={tool === "edit" ? "active" : ""}
         onClick={() => toggleTool("edit")}>

@@ -86,6 +86,34 @@ export interface WireStamp {
 
 export type WireShape = Omit<ShapeItem, "id">;
 
+// page fields below are 0-based indices into the OUTPUT page order (pages[]).
+export interface WireOutline {
+  title: string;
+  page: number | null;
+  top: number | null;
+  url: string | null;
+  open: boolean;
+  children: WireOutline[];
+}
+
+export interface WireLink {
+  page: number;
+  rect: [number, number, number, number];
+  url: string | null;
+  destPage: number | null;
+}
+
+export interface WireLinkRemoval {
+  page: number;
+  rect: [number, number, number, number];
+}
+
+export interface SaveExtras {
+  outline?: WireOutline[] | null;
+  links?: WireLink[];
+  linkRemovals?: WireLinkRemoval[];
+}
+
 export async function saveDocument(
   srcPath: string,
   outPath: string,
@@ -95,12 +123,17 @@ export async function saveDocument(
   edits: ObjectEdit[],
   stamps: WireStamp[],
   shapes: WireShape[],
+  extras: SaveExtras = {},
 ): Promise<void> {
+  const { outline = null, links = [], linkRemovals = [] } = extras;
   if (!inTauri) {
-    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes });
+    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes, outline, links, linkRemovals });
     return;
   }
-  await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes });
+  await invoke("save_document", {
+    srcPath, outPath, pages, highlights, notes, edits, stamps, shapes,
+    outline, links, linkRemovals,
+  });
 }
 
 export async function printDocument(

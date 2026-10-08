@@ -23,6 +23,15 @@ export interface DocEntry {
   pageCache: Map<number, PDFPageProxy>;
   textCache: Map<number, string>;
   annotsCache: Map<number, ExistingAnnot[]>;
+  linksCache: Map<number, ExistingLink[]>;
+  perms: number[] | null; // granted permission flags, null = unrestricted
+  needsPassword: boolean;
+}
+
+export interface ExistingLink {
+  rect: [number, number, number, number]; // normalized PDF coords
+  url: string | null;
+  destSrc: number | null; // 1-based source page a GoTo link targets
 }
 
 export interface ExistingAnnot {
@@ -79,7 +88,9 @@ async function loadDoc(tabId: string, path: string, version: number): Promise<Do
     cMapPacked: true,
     standardFontDataUrl: new URL("pdfjs/standard_fonts/", document.baseURI).href,
   });
+  let needsPassword = false;
   task.onPassword = (updatePassword: (pw: string) => void, reason: number) => {
+    needsPassword = true;
     const pw = window.prompt(
       reason === 2 ? t("pwWrong") : t("pwPrompt", { name: baseName(path) }),
     );
@@ -87,6 +98,8 @@ async function loadDoc(tabId: string, path: string, version: number): Promise<Do
     else updatePassword(pw);
   };
   const doc = await task.promise;
+  const permsRaw = await doc.getPermissions().catch(() => null);
+  const perms = permsRaw ? Array.from(permsRaw) : null;
 
   const dims: PageDims[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
@@ -103,6 +116,9 @@ async function loadDoc(tabId: string, path: string, version: number): Promise<Do
     pageCache: new Map(),
     textCache: new Map(),
     annotsCache: new Map(),
+    linksCache: new Map(),
+    perms,
+    needsPassword,
   };
   cache.set(tabId, entry);
   return entry;
@@ -202,6 +218,34 @@ export async function getAnnots(entry: DocEntry, src: number): Promise<ExistingA
     });
   }
   entry.annotsCache.set(src, out);
+  return out;
+}
+
+export async function getLinks(entry: DocEntry, src: number): Promise<ExistingLink[]> {
+  const cached = entry.linksCache.get(src);
+  if (cached) return cached;
+  const page = await getPage(entry, src);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw: any[] = await page.getAnnotations();
+  const out: ExistingLink[] = [];
+  for (const a of raw) {
+    if (a?.subtype !== "Link") continue;
+    if (!Array.isArray(a.rect) || a.rect.length < 4) continue;
+    const rect = normRect(a.rect);
+    let url: string | null = a.url ?? a.unsafeUrl ?? null;
+    let destSrc: number | null = null;
+    if (!url && a.dest != null) {
+      try {
+        const dest = typeof a.dest === "string" ? await entry.doc.getDestination(a.dest) : a.dest;
+        if (Array.isArray(dest) && dest[0]) destSrc = (await entry.doc.getPageIndex(dest[0])) + 1;
+      } catch {
+        /* unresolved destination */
+      }
+    }
+    if (typeof url === "string" && url.length === 0) url = null;
+    if (url || destSrc) out.push({ rect, url, destSrc });
+  }
+  entry.linksCache.set(src, out);
   return out;
 }
 

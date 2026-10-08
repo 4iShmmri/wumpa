@@ -52,12 +52,15 @@ fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
 
-fn root_pages_id(doc: &Document) -> R<ObjectId> {
-    let root_id = doc
-        .trailer
+pub(crate) fn catalog_id(doc: &Document) -> R<ObjectId> {
+    doc.trailer
         .get(b"Root")
         .and_then(|o| o.as_reference())
-        .map_err(err)?;
+        .map_err(err)
+}
+
+fn root_pages_id(doc: &Document) -> R<ObjectId> {
+    let root_id = catalog_id(doc)?;
     let catalog = doc.get_object(root_id).and_then(|o| o.as_dict()).map_err(err)?;
     catalog
         .get(b"Pages")
@@ -105,7 +108,7 @@ fn pull_down_inherited(doc: &mut Document, page_id: ObjectId) -> R<()> {
     Ok(())
 }
 
-fn append_annot(doc: &mut Document, page_id: ObjectId, annot_id: ObjectId) -> R<()> {
+pub(crate) fn append_annot(doc: &mut Document, page_id: ObjectId, annot_id: ObjectId) -> R<()> {
     let existing: Vec<Object> = {
         let page = doc.get_object(page_id).and_then(|o| o.as_dict()).map_err(err)?;
         match page.get(b"Annots") {
@@ -412,14 +415,33 @@ fn add_shape(doc: &mut Document, page_id: ObjectId, s: &Shape) -> R<()> {
     append_annot(doc, page_id, annot_id)
 }
 
-/// Rebuild the document's page tree: keep only the pages in `specs`, in that
-/// order, applying per-page rotation deltas, then attach annotations.
+#[derive(Default)]
+pub struct Extras<'a> {
+    pub outline: Option<&'a [crate::outline::OutlineNode]>,
+    pub links: &'a [crate::links::LinkSpec],
+    pub link_removals: &'a [crate::links::LinkRemoval],
+}
+
 pub fn rebuild(
     doc: &mut Document,
     specs: &[PageSpec],
     highlights: &[Highlight],
     notes: &[Note],
     shapes: &[Shape],
+) -> R<()> {
+    rebuild_with(doc, specs, highlights, notes, shapes, &Extras::default())
+}
+
+/// Rebuild the document's page tree: keep only the pages in `specs`, in that
+/// order, applying per-page rotation deltas, then attach annotations, links
+/// and the outline against the final page order.
+pub fn rebuild_with(
+    doc: &mut Document,
+    specs: &[PageSpec],
+    highlights: &[Highlight],
+    notes: &[Note],
+    shapes: &[Shape],
+    extras: &Extras,
 ) -> R<()> {
     let page_map = doc.get_pages();
     let pages_root = root_pages_id(doc)?;
@@ -525,6 +547,9 @@ pub fn rebuild(
     for key in INHERITABLE {
         pages.remove(key);
     }
+
+    crate::links::apply(doc, &kids, extras.links, extras.link_removals)?;
+    crate::outline::apply(doc, &kids, extras.outline)?;
 
     doc.prune_objects();
     doc.renumber_objects();
@@ -913,5 +938,63 @@ mod tests {
         .unwrap();
         let out = roundtrip(&mut doc);
         assert_eq!(out.get_pages().len(), 2);
+    }
+
+    #[test]
+    fn outline_builds_nested_tree_with_targets() {
+        use crate::outline::OutlineNode;
+        let mut doc = sample_doc(3);
+        let nodes = vec![OutlineNode {
+            title: "الفصل الأول".into(),
+            page: Some(0),
+            top: Some(700.0),
+            url: None,
+            open: true,
+            children: vec![OutlineNode {
+                title: "Section".into(),
+                page: Some(2),
+                top: None,
+                url: None,
+                open: false,
+                children: vec![],
+            }],
+        }];
+        let extras = Extras { outline: Some(&nodes), ..Default::default() };
+        rebuild_with(&mut doc, &[PageSpec::page(1, 0), PageSpec::page(2, 0), PageSpec::page(3, 0)], &[], &[], &[], &extras).unwrap();
+        let out = roundtrip(&mut doc);
+        let cat = out.get_object(out.trailer.get(b"Root").unwrap().as_reference().unwrap()).unwrap().as_dict().unwrap();
+        let outlines_id = cat.get(b"Outlines").unwrap().as_reference().unwrap();
+        let outlines = out.get_object(outlines_id).unwrap().as_dict().unwrap();
+        let first = outlines.get(b"First").unwrap().as_reference().unwrap();
+        let top = out.get_object(first).unwrap().as_dict().unwrap();
+        assert!(top.get(b"Title").unwrap().as_str().unwrap().starts_with(&[0xFE, 0xFF]));
+        assert!(top.get(b"First").is_ok());
+        assert_eq!(top.get(b"Count").unwrap().as_i64().unwrap(), 1);
+    }
+
+    #[test]
+    fn links_add_and_remove() {
+        use crate::links::{LinkRemoval, LinkSpec};
+        let mut doc = sample_doc(2);
+        let links = vec![
+            LinkSpec { page: 0, rect: [10.0, 10.0, 90.0, 30.0], url: Some("https://example.com".into()), dest_page: None },
+            LinkSpec { page: 0, rect: [10.0, 40.0, 90.0, 60.0], url: None, dest_page: Some(1) },
+        ];
+        let specs = [PageSpec::page(1, 0), PageSpec::page(2, 0)];
+        let extras = Extras { links: &links, ..Default::default() };
+        rebuild_with(&mut doc, &specs, &[], &[], &[], &extras).unwrap();
+        let mut out = roundtrip(&mut doc);
+        let pages = out.get_pages();
+        let annots = out.get_object(pages[&1]).unwrap().as_dict().unwrap().get(b"Annots").unwrap().as_array().unwrap();
+        assert_eq!(annots.len(), 2);
+
+        // Remove one existing link by its rect on a later save.
+        let removals = vec![LinkRemoval { page: 0, rect: [10.0, 10.0, 90.0, 30.0] }];
+        let extras2 = Extras { link_removals: &removals, ..Default::default() };
+        rebuild_with(&mut out, &specs, &[], &[], &[], &extras2).unwrap();
+        let out2 = roundtrip(&mut out);
+        let pages2 = out2.get_pages();
+        let annots2 = out2.get_object(pages2[&1]).unwrap().as_dict().unwrap().get(b"Annots").unwrap().as_array().unwrap();
+        assert_eq!(annots2.len(), 1);
     }
 }

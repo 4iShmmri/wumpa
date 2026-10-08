@@ -185,6 +185,11 @@ export default function App() {
         e.preventDefault();
         st.setTool(st.tool === "draw" ? "select" : "draw");
       } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "l" && tab && !inInput
+      ) {
+        e.preventDefault();
+        st.setTool(st.tool === "link" ? "select" : "link");
+      } else if (
         !mod && !e.altKey && e.key.toLowerCase() === "s" && tab && !inInput
       ) {
         e.preventDefault();

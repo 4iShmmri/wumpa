@@ -8,8 +8,10 @@ import {
 } from "../actions";
 import { report } from "../errors";
 import { t, useT } from "../i18n";
+import BookmarkPanel from "./BookmarkPanel";
 
 const THUMB_W = 132;
+type SideView = "pages" | "outline";
 
 function Thumb({ entry, spec }: { entry: DocEntry; spec: PageSpec }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -68,6 +70,8 @@ export default function Sidebar() {
   const [insertAt, setInsertAt] = useState<number | null>(null);
   const suppressClick = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; index: number } | null>(null);
+  const [view, setView] = useState<SideView>("pages");
+  const bmCount = tab?.bookmarks?.length ?? 0;
 
   const tabId = tab?.id;
   const docVersion = tab?.docVersion ?? 0;
@@ -107,7 +111,7 @@ export default function Sidebar() {
     };
   }, [menu]);
 
-  if (!tab) return <div className="sidebar empty" />;
+  if (!tab) return <div className="side-col empty" />;
 
   const select = (i: number, e: React.MouseEvent) => {
     if (suppressClick.current) {
@@ -183,9 +187,23 @@ export default function Sidebar() {
   );
 
   return (
-    <div className="sidebar" ref={listRef}>
-      {entry &&
-        tab.pages.map((spec, i) => (
+    <div className="side-col">
+      <div className="side-tabs">
+        <button className={view === "pages" ? "on" : ""} onClick={() => setView("pages")}>
+          {tr("sbPages")}
+        </button>
+        <button className={view === "outline" ? "on" : ""} onClick={() => setView("outline")}>
+          {tr("sbOutline")}
+          {bmCount > 0 && <span className="side-badge">{bmCount}</span>}
+        </button>
+      </div>
+
+      {view === "outline" ? (
+        <BookmarkPanel tab={tab} />
+      ) : (
+        <div className="sidebar" ref={listRef}>
+          {entry &&
+            tab.pages.map((spec, i) => (
           <div key={`${i}:${spec.src}:${spec.rotation}:${entry.version}`}>
             {insertAt === i && <div className="insert-line" />}
             <div
@@ -207,7 +225,10 @@ export default function Sidebar() {
             </div>
           </div>
         ))}
-      {insertAt === tab.pages.length && <div className="insert-line" />}
+          {insertAt === tab.pages.length && <div className="insert-line" />}
+        </div>
+      )}
+
       {menu && (
         <div
           className="ctx-menu"

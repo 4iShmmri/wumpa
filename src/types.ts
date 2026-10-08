@@ -63,6 +63,46 @@ export interface ShapeItem {
   opacity: number;
 }
 
+export type Rect = [number, number, number, number];
+
+export interface Bookmark {
+  id: string; // UI-only identity
+  title: string;
+  src: number; // 1-based source page; 0 = no page target
+  top?: number | null; // PDF user-space y for an /XYZ target; null = fit page
+  url?: string | null; // URI action instead of a page target
+  open?: boolean;
+  children: Bookmark[];
+}
+
+export interface LinkItem {
+  id: string; // UI-only identity
+  src: number; // source page the link sits on
+  rect: Rect; // PDF user space, x1 < x2, y1 < y2
+  url?: string | null; // external target
+  destSrc?: number | null; // internal target: source page number
+}
+
+export interface LinkRemoval {
+  src: number;
+  rect: Rect; // rect of an existing link annotation to drop on save
+}
+
+export interface SigInfo {
+  field: string;
+  signer: string;
+  email?: string | null;
+  issuer: string;
+  signedAt?: string | null;
+  reason?: string | null;
+  location?: string | null;
+  intact: boolean;
+  coversWhole: boolean;
+  selfSigned: boolean;
+  page?: number | null;
+  error?: string | null;
+}
+
 export interface Snapshot {
   pages: PageSpec[];
   highlights: Highlight[];
@@ -70,6 +110,9 @@ export interface Snapshot {
   edits: ObjectEdit[];
   stamps: StampItem[];
   shapes: ShapeItem[];
+  bookmarks: Bookmark[] | null;
+  links: LinkItem[];
+  linkRemovals: LinkRemoval[];
 }
 
 export interface Tab {
@@ -82,6 +125,10 @@ export interface Tab {
   edits: ObjectEdit[];
   stamps: StampItem[];
   shapes: ShapeItem[];
+  bookmarks: Bookmark[] | null; // null = untouched, the file's outline is kept
+  links: LinkItem[];
+  linkRemovals: LinkRemoval[];
+  signatures?: SigInfo[] | null; // verification of the file on disk
   previewPath: string | null;
   past: Snapshot[];
   future: Snapshot[];

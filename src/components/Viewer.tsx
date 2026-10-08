@@ -4,7 +4,9 @@ import { TextLayer } from "pdfjs-dist";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore, useActiveTab, type Tool } from "../store";
 import { getDoc, getPage, getAnnots, docPath, specBase, type DocEntry, type ExistingAnnot } from "../pdf";
-import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem, ShapeItem } from "../types";
+import type {
+  PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem, ShapeItem, LinkItem, LinkRemoval,
+} from "../types";
 import {
   openFileDialog, openPaths, mergeFiles, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
   getRecentFiles, dropRecent, type RecentFile,
@@ -12,6 +14,7 @@ import {
 import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
 import StampLayer from "./StampLayer";
 import ShapeLayer from "./ShapeLayer";
+import LinkLayer from "./LinkLayer";
 import TextEditPopover from "./TextEditPopover";
 import { getObjects, adjustedBox } from "../objects";
 import { confirmDialog } from "../backend";
@@ -411,6 +414,8 @@ interface PdfPageProps {
   notes: Note[];
   stamps: StampItem[];
   shapes: ShapeItem[];
+  links: LinkItem[];
+  removals: LinkRemoval[];
   tabId: string;
   tabPath: string;
   edits: ObjectEdit[];
@@ -421,8 +426,8 @@ interface PdfPageProps {
 }
 
 function PdfPage({
-  entry, spec, index, zoom, w, h, searchQuery, highlights,
-  notes, stamps, shapes, tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
+  entry, spec, index, zoom, w, h, searchQuery, highlights, notes, stamps, shapes, links, removals,
+  tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
 }: PdfPageProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -638,6 +643,19 @@ function PdfPage({
           viewport={viewport}
           zoom={zoom}
           active={tool === "draw"}
+        />
+      )}
+      {viewport && (
+        <LinkLayer
+          entry={entry}
+          src={spec.src}
+          viewport={viewport}
+          w={w}
+          h={h}
+          active={tool === "link"}
+          links={links}
+          removals={removals}
+          version={entry.version}
         />
       )}
       <div
@@ -996,7 +1014,8 @@ export default function Viewer() {
         (tool === "erase" ? " erase-mode" : "") +
         (tool === "text" ? " text-mode" : "") +
         (tool === "sign" ? " sign-mode" : "") +
-        (tool === "draw" ? " draw-mode" : "")
+        (tool === "draw" ? " draw-mode" : "") +
+        (tool === "link" ? " link-mode" : "")
       }
       ref={containerRef}
       onScroll={onScroll}
@@ -1031,6 +1050,8 @@ export default function Viewer() {
                   notes={tab.notes.filter((n) => n.src === spec.src)}
                   stamps={tab.stamps.filter((st) => st.src === spec.src)}
                   shapes={tab.shapes.filter((sh) => sh.src === spec.src)}
+                  links={tab.links.filter((l) => l.src === spec.src)}
+                  removals={tab.linkRemovals.filter((r) => r.src === spec.src)}
                   tabId={tab.id}
                   tabPath={tab.path}
                   edits={tab.edits}

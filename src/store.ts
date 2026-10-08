@@ -1,9 +1,14 @@
 import { create } from "zustand";
-import type { Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem, ShapeItem, ShapeKind } from "./types";
+import type {
+  Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem, ShapeItem, ShapeKind, LinkItem, LinkRemoval,
+} from "./types";
 import { evictDoc } from "./pdf";
 import { evictObjects } from "./objects";
 
-export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign" | "draw";
+export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign" | "draw" | "link";
+export type UtilModal =
+  | "compress" | "qr" | "newpdf" | "table"
+  | "encrypt" | "decrypt" | "sign" | "sigdetails";
 export type LangPref = "en" | "ar" | "auto";
 
 export interface ObjSel {
@@ -41,7 +46,7 @@ interface AppState {
   stampSel: { src: number; id: string } | null;
   stampEditing: string | null;
   signatureModalOpen: boolean;
-  utilModal: "compress" | "qr" | "newpdf" | "table" | null;
+  utilModal: UtilModal | null;
   qrPreset: string | null;
   shapeSel: { tabId: string; id: string } | null;
   drawKind: ShapeKind;
@@ -69,7 +74,7 @@ interface AppState {
   setStampSel: (sel: { src: number; id: string } | null) => void;
   setStampEditing: (id: string | null) => void;
   setSignatureModal: (open: boolean) => void;
-  setUtilModal: (m: "compress" | "qr" | "newpdf" | "table" | null) => void;
+  setUtilModal: (m: UtilModal | null) => void;
   setQrPreset: (v: string | null) => void;
   setShapeSel: (sel: { tabId: string; id: string } | null) => void;
   setDrawKind: (k: ShapeKind) => void;
@@ -87,7 +92,24 @@ function snapshot(t: Tab): Snapshot {
     edits: t.edits,
     stamps: t.stamps,
     shapes: t.shapes,
+    bookmarks: t.bookmarks,
+    links: t.links,
+    linkRemovals: t.linkRemovals,
   });
+}
+
+function restore(s: Snapshot) {
+  return {
+    pages: s.pages,
+    highlights: s.highlights,
+    notes: s.notes,
+    edits: s.edits,
+    stamps: s.stamps,
+    shapes: s.shapes,
+    bookmarks: s.bookmarks,
+    links: s.links,
+    linkRemovals: s.linkRemovals,
+  };
 }
 
 const initialTheme: "light" | "dark" =
@@ -194,12 +216,7 @@ export const useStore = create<AppState>((set, get) => ({
         const prev = t.past[t.past.length - 1];
         return {
           ...t,
-          pages: prev.pages,
-          highlights: prev.highlights,
-          notes: prev.notes,
-          edits: prev.edits,
-          stamps: prev.stamps,
-          shapes: prev.shapes,
+          ...restore(prev),
           past: t.past.slice(0, -1),
           future: [snapshot(t), ...t.future],
           dirty: true,
@@ -216,12 +233,7 @@ export const useStore = create<AppState>((set, get) => ({
         const next = t.future[0];
         return {
           ...t,
-          pages: next.pages,
-          highlights: next.highlights,
-          notes: next.notes,
-          edits: next.edits,
-          stamps: next.stamps,
-          shapes: next.shapes,
+          ...restore(next),
           past: [...t.past, snapshot(t)],
           future: t.future.slice(1),
           dirty: true,
@@ -252,6 +264,10 @@ export const useStore = create<AppState>((set, get) => ({
             edits: [] as ObjectEdit[],
             stamps: [] as StampItem[],
             shapes: [] as ShapeItem[],
+            bookmarks: null,
+            links: [] as LinkItem[],
+            linkRemovals: [] as LinkRemoval[],
+            signatures: undefined,
             previewPath: null,
             past: [],
             future: [],
