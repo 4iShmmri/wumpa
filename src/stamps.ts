@@ -16,14 +16,14 @@ function measureCtx() {
   return mctx;
 }
 
-export function measureText(text: string, size: number) {
+export function measureText(text: string, size: number, fontFamily?: string, lineHeight?: number) {
   const ctx = measureCtx();
-  ctx.font = `${size}px ${STAMP_FONT}`;
+  ctx.font = `${size}px ${fontFamily ?? STAMP_FONT}`;
   const lines = text.split("\n");
   const natural = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
   return {
     w: Math.max(natural + STAMP_PAD_X * 2, 24),
-    h: lines.length * size * STAMP_LINE + STAMP_PAD_Y * 2,
+    h: lines.length * size * (lineHeight ?? STAMP_LINE) + STAMP_PAD_Y * 2,
   };
 }
 
@@ -52,7 +52,7 @@ export function updateTextStamp(
     stamps: t.stamps.map((s) => {
       if (s.id !== id || s.kind !== "text") return s;
       const next = { ...s, ...patch };
-      const { w, h } = measureText(next.text ?? "", next.size ?? 16);
+      const { w, h } = measureText(next.text ?? "", next.size ?? 16, next.fontFamily, next.lineHeight);
       const [x1, , , y2] = s.rect;
       return { ...next, rect: [x1, y2 - h, x1 + Math.max(w, 80), y2] as StampItem["rect"] };
     }),
@@ -143,6 +143,11 @@ function toB64(bytes: Uint8ClampedArray): string {
 }
 
 export async function rasterizeStamps(stamps: StampItem[]): Promise<WireStamp[]> {
+  try {
+    await document.fonts.ready;
+  } catch {
+    /* render with whatever is loaded */
+  }
   const out: WireStamp[] = [];
   for (const s of stamps) {
     const rw = Math.abs(s.rect[2] - s.rect[0]);
@@ -156,11 +161,12 @@ export async function rasterizeStamps(stamps: StampItem[]): Promise<WireStamp[]>
     const ctx = canvas.getContext("2d")!;
     if (s.kind === "text") {
       const size = (s.size ?? 16) * SCALE;
-      ctx.font = `${size}px ${STAMP_FONT}`;
+      const lh = s.lineHeight ?? STAMP_LINE;
+      ctx.font = `${size}px ${s.fontFamily ?? STAMP_FONT}`;
       ctx.fillStyle = s.color ?? "#111111";
       ctx.textBaseline = "top";
       (s.text ?? "").split("\n").forEach((line, i) => {
-        ctx.fillText(line, STAMP_PAD_X * SCALE, STAMP_PAD_Y * SCALE + i * size * STAMP_LINE);
+        ctx.fillText(line, STAMP_PAD_X * SCALE, STAMP_PAD_Y * SCALE + i * size * lh);
       });
     } else if (s.sigDataUrl) {
       const img = await loadImage(s.sigDataUrl);

@@ -382,11 +382,13 @@ export function replaceTextObject(
   text: string,
   size: number,
   color: string,
+  fontFamily?: string,
+  lineHeight?: number,
 ) {
   S().mutateDoc(tabId, (t) => {
     const edits: ObjectEdit[] = [...t.edits, { src, id, action: "delete" }];
     if (!text.trim()) return { edits };
-    const { w, h } = measureText(text, size);
+    const { w, h } = measureText(text, size, fontFamily, lineHeight);
     const stamp: StampItem = {
       id: crypto.randomUUID(),
       src,
@@ -395,6 +397,8 @@ export function replaceTextObject(
       text,
       size,
       color,
+      fontFamily,
+      lineHeight,
     };
     return { edits, stamps: [...t.stamps, stamp] };
   });

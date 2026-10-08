@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { getTextInRect, type DocEntry } from "../pdf";
 import { replaceTextObject } from "../actions";
+import { STAMP_FONT, STAMP_LINE } from "../stamps";
 
 const COLORS = ["#111111", "#c0392b", "#1d4ed8"];
 
 export default function TextEditPopover({
-  entry, tabId, src, objId, bbox, left, top, onDone,
+  entry, tabId, src, objId, bbox, left, top, zoom, onDone,
 }: {
   entry: DocEntry;
   tabId: string;
@@ -14,13 +15,17 @@ export default function TextEditPopover({
   bbox: [number, number, number, number];
   left: number;
   top: number;
+  zoom: number;
   onDone: () => void;
 }) {
   const [text, setText] = useState("");
   const [size, setSize] = useState(14);
   const [color, setColor] = useState(COLORS[0]);
+  const [fontFamily, setFontFamily] = useState<string | undefined>(undefined);
+  const [lineHeight, setLineHeight] = useState(STAMP_LINE);
   const [ready, setReady] = useState(false);
   const [unreadable, setUnreadable] = useState(false);
+  const orig = useRef<{ text: string; size: number; color: string } | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -29,8 +34,12 @@ export default function TextEditPopover({
       .then((r) => {
         if (!on) return;
         if (r.text) {
+          const sz = Math.max(6, Math.min(120, r.size || 14));
           setText(r.text);
-          setSize(Math.max(6, Math.min(120, Math.round(r.size) || 14)));
+          setSize(sz);
+          setLineHeight(r.lineHeight || STAMP_LINE);
+          if (r.fontName) setFontFamily(`"${r.fontName}", ${r.fallbackFamily}`);
+          orig.current = { text: r.text, size: sz, color: COLORS[0] };
         } else {
           setUnreadable(true);
         }
@@ -52,7 +61,12 @@ export default function TextEditPopover({
   }, [ready]);
 
   const replace = () => {
-    replaceTextObject(tabId, src, objId, bbox, text, size, color);
+    const o = orig.current;
+    if (o && text === o.text && size === o.size && color === o.color) {
+      onDone();
+      return;
+    }
+    replaceTextObject(tabId, src, objId, bbox, text, size, color, fontFamily, lineHeight);
     onDone();
   };
 
@@ -75,6 +89,13 @@ export default function TextEditPopover({
         ref={taRef}
         value={text}
         disabled={!ready}
+        dir="auto"
+        style={{
+          fontFamily: fontFamily ?? STAMP_FONT,
+          fontSize: Math.max(11, size * zoom),
+          lineHeight,
+          color,
+        }}
         placeholder={
           unreadable ? "Original text could not be read — type replacement" : "Loading…"
         }
@@ -83,7 +104,7 @@ export default function TextEditPopover({
       <div className="te-tools">
         <button title="Smaller" onClick={() => setSize((v) => Math.max(6, v - 2))}>A−</button>
         <button title="Larger" onClick={() => setSize((v) => Math.min(120, v + 2))}>A+</button>
-        <span className="te-size">{size}pt</span>
+        <span className="te-size">{Math.round(size)}pt</span>
         {COLORS.map((c) => (
           <button
             key={c}

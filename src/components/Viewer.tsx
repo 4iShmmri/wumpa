@@ -292,6 +292,7 @@ function ObjectLayer({
             bbox={textEdit.pdf}
             left={l}
             top={t}
+            zoom={viewport.scale}
             onDone={() => setTextEdit(null)}
           />
         );

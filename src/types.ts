@@ -45,6 +45,8 @@ export interface StampItem {
   text?: string;
   size?: number;
   color?: string;
+  fontFamily?: string;
+  lineHeight?: number;
   sigDataUrl?: string;
 }
 

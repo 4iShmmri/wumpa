@@ -66,15 +66,16 @@ function TextEditor({ stamp, tabId, box, zoom }: {
     <textarea
       ref={ref}
       className="stamp-edit"
+      dir="auto"
       style={{
         left: box.l,
         top: box.t,
         minWidth: Math.max(box.w, 60),
         minHeight: box.h,
         fontSize: size,
-        lineHeight: STAMP_LINE,
+        lineHeight: stamp.lineHeight ?? STAMP_LINE,
         color: stamp.color,
-        fontFamily: STAMP_FONT,
+        fontFamily: stamp.fontFamily ?? STAMP_FONT,
         padding: `${STAMP_PAD_Y * zoom}px ${STAMP_PAD_X * zoom}px`,
       }}
       value={text}
@@ -182,11 +183,12 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
               {s.kind === "text" ? (
                 <div
                   className="stamp-text"
+                  dir="auto"
                   style={{
                     fontSize: (s.size ?? 16) * zoom,
-                    lineHeight: STAMP_LINE,
+                    lineHeight: s.lineHeight ?? STAMP_LINE,
                     color: s.color,
-                    fontFamily: STAMP_FONT,
+                    fontFamily: s.fontFamily ?? STAMP_FONT,
                     padding: `${STAMP_PAD_Y * zoom}px ${STAMP_PAD_X * zoom}px`,
                   }}
                 >
