@@ -10,7 +10,7 @@ import SignatureModal from "./components/SignatureModal";
 import { useStore } from "./store";
 import {
   openPaths, openFileDialog, saveActive, closeTabSafe,
-  deleteSelection, splitEvery, deleteObject,
+  deleteSelection, splitEvery, deleteObject, deleteShape,
 } from "./actions";
 import { deleteStamp } from "./stamps";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
@@ -136,6 +136,12 @@ export default function App() {
         deleteStamp(tab.id, st.stampSel.id);
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
+        tab && !inInput && st.shapeSel
+      ) {
+        e.preventDefault();
+        deleteShape(st.shapeSel.tabId, st.shapeSel.id);
+      } else if (
+        (e.key === "Delete" || e.key === "Backspace") &&
         tab && !inInput && st.objSel
       ) {
         e.preventDefault();
@@ -168,6 +174,11 @@ export default function App() {
         e.preventDefault();
         st.setTool(st.tool === "text" ? "select" : "text");
       } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "d" && tab && !inInput
+      ) {
+        e.preventDefault();
+        st.setTool(st.tool === "draw" ? "select" : "draw");
+      } else if (
         !mod && !e.altKey && e.key.toLowerCase() === "s" && tab && !inInput
       ) {
         e.preventDefault();
@@ -185,6 +196,7 @@ export default function App() {
         }
       } else if (e.key === "Escape" && tab && !inInput) {
         if (st.stampSel) st.setStampSel(null);
+        else if (st.shapeSel) st.setShapeSel(null);
         else if (st.objSel) st.setObjSel(null);
         else if (st.tool !== "select") st.setTool("select");
         else if (st.search.open) st.setSearch({ open: false });

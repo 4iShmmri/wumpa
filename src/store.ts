@@ -1,9 +1,9 @@
 import { create } from "zustand";
-import type { Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem } from "./types";
+import type { Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem, ShapeItem, ShapeKind } from "./types";
 import { evictDoc } from "./pdf";
 import { evictObjects } from "./objects";
 
-export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign";
+export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign" | "draw";
 
 export interface ObjSel {
   src: number;
@@ -29,6 +29,10 @@ interface AppState {
   stampSel: { src: number; id: string } | null;
   stampEditing: string | null;
   signatureModalOpen: boolean;
+  shapeSel: { tabId: string; id: string } | null;
+  drawKind: ShapeKind;
+  drawColor: [number, number, number];
+  drawWidth: number;
 
   addTab: (tab: Tab) => void;
   closeTab: (id: string) => void;
@@ -47,6 +51,10 @@ interface AppState {
   setStampSel: (sel: { src: number; id: string } | null) => void;
   setStampEditing: (id: string | null) => void;
   setSignatureModal: (open: boolean) => void;
+  setShapeSel: (sel: { tabId: string; id: string } | null) => void;
+  setDrawKind: (k: ShapeKind) => void;
+  setDrawColor: (c: [number, number, number]) => void;
+  setDrawWidth: (w: number) => void;
 }
 
 function snapshot(t: Tab): Snapshot {
@@ -56,6 +64,7 @@ function snapshot(t: Tab): Snapshot {
     notes: t.notes,
     edits: t.edits,
     stamps: t.stamps,
+    shapes: t.shapes,
   });
 }
 
@@ -76,6 +85,10 @@ export const useStore = create<AppState>((set, get) => ({
   stampSel: null,
   stampEditing: null,
   signatureModalOpen: false,
+  shapeSel: null,
+  drawKind: "ink",
+  drawColor: [0.86, 0.21, 0.18],
+  drawWidth: 2.5,
 
   addTab: (tab) =>
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
@@ -101,6 +114,7 @@ export const useStore = create<AppState>((set, get) => ({
       objSel: null,
       stampSel: null,
       stampEditing: null,
+      shapeSel: null,
     }),
 
   patchTab: (id, patch) =>
@@ -133,6 +147,7 @@ export const useStore = create<AppState>((set, get) => ({
           notes: prev.notes,
           edits: prev.edits,
           stamps: prev.stamps,
+          shapes: prev.shapes,
           past: t.past.slice(0, -1),
           future: [snapshot(t), ...t.future],
           dirty: true,
@@ -154,6 +169,7 @@ export const useStore = create<AppState>((set, get) => ({
           notes: next.notes,
           edits: next.edits,
           stamps: next.stamps,
+          shapes: next.shapes,
           past: [...t.past, snapshot(t)],
           future: t.future.slice(1),
           dirty: true,
@@ -170,6 +186,7 @@ export const useStore = create<AppState>((set, get) => ({
         objSel: null,
         stampSel: null,
         stampEditing: null,
+        shapeSel: null,
         tabs: s.tabs.map((t) => {
           if (t.id !== id) return t;
           const n = t.pages.length;
@@ -182,6 +199,7 @@ export const useStore = create<AppState>((set, get) => ({
             notes: [] as Note[],
             edits: [] as ObjectEdit[],
             stamps: [] as StampItem[],
+            shapes: [] as ShapeItem[],
             previewPath: null,
             past: [],
             future: [],
@@ -212,11 +230,30 @@ export const useStore = create<AppState>((set, get) => ({
   scrollTo: (page) =>
     set((s) => ({ scrollTarget: { page, nonce: (s.scrollTarget?.nonce ?? 0) + 1 } })),
   setTool: (tool) =>
-    set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null, stampSel: null })),
-  setObjSel: (objSel) => set((s) => ({ objSel, stampSel: objSel ? null : s.stampSel })),
-  setStampSel: (stampSel) => set((s) => ({ stampSel, objSel: stampSel ? null : s.objSel })),
+    set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null, stampSel: null, shapeSel: null })),
+  setObjSel: (objSel) =>
+    set((s) => ({
+      objSel,
+      stampSel: objSel ? null : s.stampSel,
+      shapeSel: objSel ? null : s.shapeSel,
+    })),
+  setStampSel: (stampSel) =>
+    set((s) => ({
+      stampSel,
+      objSel: stampSel ? null : s.objSel,
+      shapeSel: stampSel ? null : s.shapeSel,
+    })),
   setStampEditing: (stampEditing) => set({ stampEditing }),
   setSignatureModal: (signatureModalOpen) => set({ signatureModalOpen }),
+  setShapeSel: (shapeSel) =>
+    set((s) => ({
+      shapeSel,
+      objSel: shapeSel ? null : s.objSel,
+      stampSel: shapeSel ? null : s.stampSel,
+    })),
+  setDrawKind: (drawKind) => set({ drawKind }),
+  setDrawColor: (drawColor) => set({ drawColor }),
+  setDrawWidth: (drawWidth) => set({ drawWidth }),
 }));
 
 export function useActiveTab(): Tab | null {

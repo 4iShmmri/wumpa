@@ -86,7 +86,7 @@ async fn split_document(src_path: String, parts: Vec<SplitPart>) -> Result<(), S
         let specs: Vec<PageSpec> = part
             .pages
             .iter()
-            .map(|&p| PageSpec { src: p, rotation: 0 })
+            .map(|&p| PageSpec::page(p, 0))
             .collect();
         pdf_ops::rebuild(&mut doc, &specs, &[], &[], &[])?;
         doc.save(&part.out_path).map_err(|e| e.to_string())?;

@@ -1,7 +1,7 @@
 // Bridge to the Tauri backend, with browser fallbacks so the UI can be
 // developed and tested in a plain browser (npm run dev).
 import { invoke } from "@tauri-apps/api/core";
-import type { PageSpec, Highlight, ObjDesc, ObjectEdit } from "./types";
+import type { PageSpec, Highlight, ObjDesc, ObjectEdit, ShapeItem } from "./types";
 
 export const inTauri = "__TAURI_INTERNALS__" in window;
 
@@ -68,6 +68,8 @@ export interface WireStamp {
   rgbaB64: string;
 }
 
+export type WireShape = Omit<ShapeItem, "id">;
+
 export async function saveDocument(
   srcPath: string,
   outPath: string,
@@ -76,12 +78,13 @@ export async function saveDocument(
   notes: NotePayload[],
   edits: ObjectEdit[],
   stamps: WireStamp[],
+  shapes: WireShape[],
 ): Promise<void> {
   if (!inTauri) {
-    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits, stamps });
+    console.log("saveDocument", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes });
     return;
   }
-  await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits, stamps });
+  await invoke("save_document", { srcPath, outPath, pages, highlights, notes, edits, stamps, shapes });
 }
 
 export async function listPageObjects(srcPath: string, page: number): Promise<ObjDesc[]> {

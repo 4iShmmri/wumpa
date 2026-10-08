@@ -1,8 +1,77 @@
+import { useEffect, useState } from "react";
 import { useStore, useActiveTab } from "../store";
+import type { ShapeKind } from "../types";
 import {
   openFileDialog, saveActive, mergeFiles, extractSelected,
   rotateSelection, deleteSelection, highlightSelection,
 } from "../actions";
+
+const DRAW_KINDS: ShapeKind[] = ["ink", "rect", "ellipse", "line", "arrow"];
+const DRAW_COLORS: [number, number, number][] = [
+  [0.86, 0.21, 0.18], [0.1, 0.1, 0.1], [0.11, 0.3, 0.85],
+  [0.09, 0.55, 0.25], [0.95, 0.6, 0.05], [0.55, 0.15, 0.6],
+];
+const DRAW_WIDTHS = [1.5, 2.5, 4.5];
+const cssColor = (c: [number, number, number]) =>
+  `rgb(${c.map((v) => Math.round(v * 255)).join(",")})`;
+
+function KindIcon({ k }: { k: ShapeKind }) {
+  const s = {
+    fill: "none", stroke: "currentColor", strokeWidth: 1.8,
+    strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+  };
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24">
+      {k === "ink" && <path {...s} d="M3 17c3-7 5-8 6.5-5s1.5 6 3.5 6 3-8 5-6 1 5 3 5" />}
+      {k === "rect" && <rect {...s} x="4" y="6" width="16" height="12" rx="1" />}
+      {k === "ellipse" && <ellipse {...s} cx="12" cy="12" rx="8" ry="6" />}
+      {k === "line" && <path {...s} d="M4 20L20 4" />}
+      {k === "arrow" && <path {...s} d="M4 20L18 6 M11 6h7v7" />}
+    </svg>
+  );
+}
+
+function DrawPopover() {
+  const drawKind = useStore((s) => s.drawKind);
+  const drawColor = useStore((s) => s.drawColor);
+  const drawWidth = useStore((s) => s.drawWidth);
+  const st = useStore.getState;
+  return (
+    <div className="draw-popover" onPointerDown={(e) => e.stopPropagation()}>
+      {DRAW_KINDS.map((k) => (
+        <button
+          key={k}
+          className={"dk" + (drawKind === k ? " on" : "")}
+          title={k}
+          onClick={() => st().setDrawKind(k)}
+        >
+          <KindIcon k={k} />
+        </button>
+      ))}
+      <div className="psep" />
+      {DRAW_COLORS.map((c) => (
+        <button
+          key={c.join()}
+          className={"cdot" + (drawColor.join() === c.join() ? " on" : "")}
+          style={{ background: cssColor(c) }}
+          title="Color"
+          onClick={() => st().setDrawColor(c)}
+        />
+      ))}
+      <div className="psep" />
+      {DRAW_WIDTHS.map((w, i) => (
+        <button
+          key={w}
+          className={"wdot" + (drawWidth === w ? " on" : "")}
+          title={`${w}pt`}
+          onClick={() => st().setDrawWidth(w)}
+        >
+          <i style={{ width: 4 + i * 3, height: 4 + i * 3 }} />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function I({ d, size = 17 }: { d: string; size?: number }) {
   return (
@@ -33,6 +102,7 @@ const icons = {
   erase: "M9 3H5a2 2 0 0 0-2 2v4 M15 3h4a2 2 0 0 1 2 2v4 M9 21H5a2 2 0 0 1-2-2v-4 M15 21h4a2 2 0 0 0 2-2v-4 M8 12h8",
   text: "M4 7V5h16v2 M12 5v14 M9 19h6",
   sign: "M3 17c3-6 5-8 6-6s-1 5 1 5 3-7 5-5-1 6 2 6h4",
+  draw: "M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
@@ -45,6 +115,20 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
   const tool = useStore((s) => s.tool);
   const st = useStore.getState;
   const has = !!tab;
+  const [drawOpen, setDrawOpen] = useState(false);
+
+  useEffect(() => {
+    if (tool !== "draw") setDrawOpen(false);
+  }, [tool]);
+
+  useEffect(() => {
+    if (!drawOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as Element | null)?.closest?.(".draw-wrap")) setDrawOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [drawOpen]);
 
   const setZoom = (z: number) => {
     if (!tab) return;
@@ -133,6 +217,26 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       >
         <I d={icons.sign} />
       </button>
+      <span className="draw-wrap">
+        <button
+          title="Draw (D)"
+          disabled={!has}
+          className={tool === "draw" ? "active" : ""}
+          onClick={() => {
+            if (tool !== "draw") {
+              st().setTool("draw");
+              setDrawOpen(true);
+            } else if (drawOpen) {
+              setDrawOpen(false);
+            } else {
+              st().setTool("select");
+            }
+          }}
+        >
+          <I d={icons.draw} />
+        </button>
+        {drawOpen && <DrawPopover />}
+      </span>
       <div className="spacer" />
       <button
         title="Search (⌘F)"

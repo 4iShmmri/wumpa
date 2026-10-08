@@ -271,7 +271,7 @@ mod tests {
         let mut stamp = red_2x2();
         stamp.src = 2;
         apply_stamps(&mut doc, &[stamp]).unwrap();
-        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &[]).unwrap();
+        rebuild(&mut doc, &[PageSpec::page(1, 0)], &[], &[], &[]).unwrap();
         let out = roundtrip(&mut doc);
         assert_eq!(out.get_pages().len(), 1);
     }

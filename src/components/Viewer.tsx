@@ -3,12 +3,13 @@ import { TextLayer } from "pdfjs-dist";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore, useActiveTab, type Tool } from "../store";
 import { getDoc, getPage, getAnnots, docPath, type DocEntry, type ExistingAnnot } from "../pdf";
-import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem } from "../types";
+import type { PageSpec, Highlight, Note, ObjDesc, ObjectEdit, StampItem, ShapeItem } from "../types";
 import {
   openFileDialog, addNote, updateNote, deleteNote, addObjectEdits, deleteObject,
 } from "../actions";
 import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
 import StampLayer from "./StampLayer";
+import ShapeLayer from "./ShapeLayer";
 import TextEditPopover from "./TextEditPopover";
 import { getObjects, adjustedBox } from "../objects";
 import { confirmDialog } from "../backend";
@@ -398,6 +399,7 @@ interface PdfPageProps {
   highlights: Highlight[];
   notes: Note[];
   stamps: StampItem[];
+  shapes: ShapeItem[];
   tabId: string;
   tabPath: string;
   edits: ObjectEdit[];
@@ -409,7 +411,7 @@ interface PdfPageProps {
 
 function PdfPage({
   entry, spec, index, zoom, w, h, searchQuery, highlights,
-  notes, stamps, tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
+  notes, stamps, shapes, tabId, tabPath, edits, tool, openNote, setOpenNote, requestClose,
 }: PdfPageProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -578,6 +580,16 @@ function PdfPage({
               })
             : [],
         )}
+      {viewport && (shapes.length > 0 || tool === "draw") && (
+        <ShapeLayer
+          tabId={tabId}
+          src={spec.src}
+          shapes={shapes}
+          viewport={viewport}
+          zoom={zoom}
+          active={tool === "draw"}
+        />
+      )}
       <div
         className="textLayer"
         ref={textRef}
@@ -847,7 +859,8 @@ export default function Viewer() {
         (tool === "edit" ? " edit-mode" : "") +
         (tool === "erase" ? " erase-mode" : "") +
         (tool === "text" ? " text-mode" : "") +
-        (tool === "sign" ? " sign-mode" : "")
+        (tool === "sign" ? " sign-mode" : "") +
+        (tool === "draw" ? " draw-mode" : "")
       }
       ref={containerRef}
       onScroll={onScroll}
@@ -881,6 +894,7 @@ export default function Viewer() {
                   highlights={tab.highlights.filter((hl) => hl.src === spec.src)}
                   notes={tab.notes.filter((n) => n.src === spec.src)}
                   stamps={tab.stamps.filter((st) => st.src === spec.src)}
+                  shapes={tab.shapes.filter((sh) => sh.src === spec.src)}
                   tabId={tab.id}
                   tabPath={tab.path}
                   edits={tab.edits}

@@ -46,12 +46,26 @@ export interface StampItem {
   sigDataUrl?: string;
 }
 
+export type ShapeKind = "ink" | "rect" | "ellipse" | "line" | "arrow";
+
+export interface ShapeItem {
+  id: string;
+  src: number;
+  kind: ShapeKind;
+  rect: [number, number, number, number];
+  strokes: [number, number][][];
+  color: [number, number, number]; // 0..1 floats
+  width: number;
+  opacity: number;
+}
+
 export interface Snapshot {
   pages: PageSpec[];
   highlights: Highlight[];
   notes: Note[];
   edits: ObjectEdit[];
   stamps: StampItem[];
+  shapes: ShapeItem[];
 }
 
 export interface Tab {
@@ -63,6 +77,7 @@ export interface Tab {
   notes: Note[];
   edits: ObjectEdit[];
   stamps: StampItem[];
+  shapes: ShapeItem[];
   previewPath: string | null;
   past: Snapshot[];
   future: Snapshot[];

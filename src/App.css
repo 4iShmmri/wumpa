@@ -892,3 +892,126 @@ body {
   min-width: 32px;
   text-align: center;
 }
+
+/* ---------- Drawing ---------- */
+.shape-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.shape-layer svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.viewer.draw-mode {
+  cursor: crosshair;
+}
+
+.viewer.draw-mode .textLayer {
+  pointer-events: none;
+}
+
+.shape-sel-outline {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.draw-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.draw-popover {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  z-index: 40;
+  white-space: nowrap;
+}
+
+.draw-popover .psep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 3px;
+}
+
+.draw-popover .dk {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.draw-popover .dk:hover {
+  background: var(--btn-hover);
+}
+
+.draw-popover .dk.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.draw-popover .cdot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.draw-popover .cdot.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.draw-popover .wdot {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.draw-popover .wdot:hover {
+  background: var(--btn-hover);
+}
+
+.draw-popover .wdot.on {
+  background: var(--accent-soft);
+}
+
+.draw-popover .wdot i {
+  display: block;
+  background: var(--fg);
+  border-radius: 50%;
+}

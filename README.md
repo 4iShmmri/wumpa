@@ -14,6 +14,8 @@ Built with **Rust** (Tauri v2 + lopdf) and **PDF.js**. Works fully offline — y
 - Shows highlights and comments already present in a PDF
 - Object editor: click any text block, image or shape on a page to move, resize, or truly delete it; drag a rectangle to delete everything in an area
 - Add free text anywhere (any language — rendered by the OS, so Arabic shaping is correct) and a hand-drawn signature, Fill & Sign style
+- Edit existing text in place: double-click a line in edit mode, rewrite it, done
+- Draw on pages: freehand ink, rectangles, ellipses, lines and arrows in six colors — saved as real PDF annotations
 - Double-click any PDF in Finder/Explorer to open it (after installing)
 - Undo / redo for all page operations
 - Light & dark themes, keyboard shortcuts
@@ -32,6 +34,7 @@ Built with **Rust** (Tauri v2 + lopdf) and **PDF.js**. Works fully offline — y
 | Note tool | N |
 | Edit objects / Delete area | E / R |
 | Add text / Signature | T / S |
+| Draw | D |
 
 (Use Ctrl instead of ⌘ on Windows/Linux.)
 

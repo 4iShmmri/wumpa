@@ -1,5 +1,5 @@
 import { useStore, getActiveTab } from "./store";
-import type { Tab, Note, ObjectEdit, StampItem } from "./types";
+import type { Tab, Note, ObjectEdit, StampItem, ShapeItem } from "./types";
 import {
   pickPdfs, pickSavePath, pickDirectory, saveDocument, mergeDocuments,
   splitDocument, baseName, dirName, confirmDialog,
@@ -23,7 +23,7 @@ export async function openPaths(paths: string[]) {
       const tab: Tab = {
         id, path, name: baseName(path),
         pages: Array.from({ length: entry.numPages }, (_, i) => ({ src: i + 1, rotation: 0 })),
-        highlights: [], notes: [], edits: [], stamps: [], previewPath: null, past: [], future: [],
+        highlights: [], notes: [], edits: [], stamps: [], shapes: [], previewPath: null, past: [], future: [],
         zoom: 1, currentPage: 1, selected: [],
         dirty: false, docVersion: 0,
       };
@@ -55,6 +55,10 @@ export async function saveActive(saveAs: boolean) {
       tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
       tab.edits,
       stamps,
+      tab.shapes.map((sh) => ({
+        src: sh.src, kind: sh.kind, rect: sh.rect, strokes: sh.strokes,
+        color: sh.color, width: sh.width, opacity: sh.opacity,
+      })),
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
     S().setStatus(`Saved ${baseName(outPath)}`);
@@ -101,7 +105,7 @@ export async function extractSelected() {
   if (!out) return;
   const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
   try {
-    await saveDocument(tab.path, outPath, specs, [], [], tab.edits, []);
+    await saveDocument(tab.path, outPath, specs, [], [], tab.edits, [], []);
     S().setStatus(`Extracted ${specs.length} page(s)`);
     await openPaths([outPath]);
   } catch (e) {
@@ -199,6 +203,31 @@ export function addObjectEdits(tabId: string, newEdits: ObjectEdit[]) {
     }
     return { edits };
   });
+}
+
+export function addShape(tabId: string, shape: ShapeItem) {
+  S().mutateDoc(tabId, (t) => ({ shapes: [...t.shapes, shape] }));
+}
+
+export function moveShape(tabId: string, id: string, dx: number, dy: number) {
+  S().mutateDoc(tabId, (t) => ({
+    shapes: t.shapes.map((sh) =>
+      sh.id === id
+        ? {
+            ...sh,
+            rect: [sh.rect[0] + dx, sh.rect[1] + dy, sh.rect[2] + dx, sh.rect[3] + dy] as [
+              number, number, number, number,
+            ],
+            strokes: sh.strokes.map((st) => st.map(([x, y]) => [x + dx, y + dy] as [number, number])),
+          }
+        : sh,
+    ),
+  }));
+}
+
+export function deleteShape(tabId: string, id: string) {
+  S().mutateDoc(tabId, (t) => ({ shapes: t.shapes.filter((sh) => sh.id !== id) }));
+  S().setShapeSel(null);
 }
 
 export function deleteObject(tabId: string, src: number, id: number) {

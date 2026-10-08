@@ -4,9 +4,19 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Clone)]
 pub struct PageSpec {
-    pub src: u32,
+    pub src: u32, // 0 = blank page of size (w, h)
     #[serde(default)]
     pub rotation: i32,
+    #[serde(default)]
+    pub w: f64,
+    #[serde(default)]
+    pub h: f64,
+}
+
+impl PageSpec {
+    pub fn page(src: u32, rotation: i32) -> Self {
+        Self { src, rotation, w: 0.0, h: 0.0 }
+    }
 }
 
 #[derive(Deserialize, Clone)]
@@ -415,24 +425,68 @@ pub fn rebuild(
     let pages_root = root_pages_id(doc)?;
     let mut kids: Vec<ObjectId> = Vec::new();
 
+    let mut base_rot: std::collections::HashMap<u32, i64> = std::collections::HashMap::new();
+    let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+
     for spec in specs {
+        let new_rot = |base: i64| ((base + spec.rotation as i64) % 360 + 360) % 360;
+
+        if spec.src == 0 {
+            let w = if spec.w > 0.0 { spec.w } else { 612.0 };
+            let h = if spec.h > 0.0 { spec.h } else { 792.0 };
+            let content_id = doc.add_object(Stream::new(dictionary! {}, Vec::new()));
+            let mut page = dictionary! {
+                "Type" => "Page",
+                "MediaBox" => vec![0.into(), 0.into(), w.into(), h.into()],
+                "Resources" => Object::Dictionary(Dictionary::new()),
+                "Contents" => content_id,
+                "Parent" => Object::Reference(pages_root),
+            };
+            let rot = new_rot(0);
+            if rot != 0 {
+                page.set("Rotate", rot);
+            }
+            kids.push(doc.add_object(page));
+            continue;
+        }
+
         let oid = *page_map
             .get(&spec.src)
             .ok_or_else(|| format!("page {} not found", spec.src))?;
-        pull_down_inherited(doc, oid)?;
-        let page = doc
-            .get_object_mut(oid)
-            .and_then(|o| o.as_dict_mut())
-            .map_err(err)?;
-        let existing_rot = page.get(b"Rotate").and_then(|o| o.as_i64()).unwrap_or(0);
-        let new_rot = ((existing_rot + spec.rotation as i64) % 360 + 360) % 360;
-        if new_rot != 0 {
-            page.set("Rotate", new_rot);
+
+        if seen.insert(spec.src) {
+            pull_down_inherited(doc, oid)?;
+            let page = doc
+                .get_object_mut(oid)
+                .and_then(|o| o.as_dict_mut())
+                .map_err(err)?;
+            let existing_rot = page.get(b"Rotate").and_then(|o| o.as_i64()).unwrap_or(0);
+            base_rot.insert(spec.src, existing_rot);
+            let rot = new_rot(existing_rot);
+            if rot != 0 {
+                page.set("Rotate", rot);
+            } else {
+                page.remove(b"Rotate");
+            }
+            page.set("Parent", Object::Reference(pages_root));
+            kids.push(oid);
         } else {
-            page.remove(b"Rotate");
+            // Later occurrence of the same source page: clone the dict so Kids
+            // never repeats an ObjectId; Contents/Resources stay shared.
+            let mut dict = doc
+                .get_object(oid)
+                .and_then(|o| o.as_dict())
+                .map_err(err)?
+                .clone();
+            let rot = new_rot(base_rot[&spec.src]);
+            if rot != 0 {
+                dict.set("Rotate", rot);
+            } else {
+                dict.remove(b"Rotate");
+            }
+            dict.set("Parent", Object::Reference(pages_root));
+            kids.push(doc.add_object(Object::Dictionary(dict)));
         }
-        page.set("Parent", Object::Reference(pages_root));
-        kids.push(oid);
     }
 
     for h in highlights {
@@ -632,8 +686,8 @@ mod tests {
         rebuild(
             &mut doc,
             &[
-                PageSpec { src: 3, rotation: 90 },
-                PageSpec { src: 1, rotation: 0 },
+                PageSpec::page(3, 90),
+                PageSpec::page(1, 0),
             ],
             &[],
             &[],
@@ -670,7 +724,7 @@ mod tests {
     #[test]
     fn annotations_have_appearance() {
         let mut doc = sample_doc(2);
-        let specs: Vec<PageSpec> = (1..=2).map(|i| PageSpec { src: i, rotation: 0 }).collect();
+        let specs: Vec<PageSpec> = (1..=2).map(|i| PageSpec::page(i, 0)).collect();
         let hl = Highlight {
             src: 1,
             rects: vec![[72.0, 690.0, 200.0, 710.0]],
@@ -736,7 +790,7 @@ mod tests {
             shape("line", line.clone()),
             shape("arrow", line),
         ];
-        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &shapes).unwrap();
+        rebuild(&mut doc, &[PageSpec::page(1, 0)], &[], &[], &shapes).unwrap();
         let out = roundtrip(&mut doc);
         let annots = page_annots(&out);
         assert_eq!(annots.len(), 5);
@@ -760,7 +814,7 @@ mod tests {
                 vec![[120.0, 100.0], [170.0, 150.0]],
             ],
         );
-        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &[s]).unwrap();
+        rebuild(&mut doc, &[PageSpec::page(1, 0)], &[], &[], &[s]).unwrap();
         let out = roundtrip(&mut doc);
         let annots = page_annots(&out);
         let ink = annots[0].get(b"InkList").unwrap().as_array().unwrap();
@@ -771,10 +825,93 @@ mod tests {
     fn arrow_has_closed_arrow_ending() {
         let mut doc = sample_doc(1);
         let s = shape("arrow", vec![vec![[100.0, 100.0], [200.0, 160.0]]]);
-        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &[s]).unwrap();
+        rebuild(&mut doc, &[PageSpec::page(1, 0)], &[], &[], &[s]).unwrap();
         let out = roundtrip(&mut doc);
         let annots = page_annots(&out);
         let le = annots[0].get(b"LE").unwrap().as_array().unwrap();
         assert_eq!(le[1].as_name().unwrap(), b"ClosedArrow");
+    }
+
+    fn num(o: &Object) -> f64 {
+        match o {
+            Object::Integer(i) => *i as f64,
+            Object::Real(r) => *r as f64,
+            _ => panic!("not a number"),
+        }
+    }
+
+    #[test]
+    fn blank_page_inserted() {
+        let mut doc = sample_doc(2);
+        rebuild(
+            &mut doc,
+            &[
+                PageSpec::page(1, 0),
+                PageSpec { src: 0, rotation: 0, w: 300.0, h: 400.0 },
+                PageSpec::page(2, 0),
+            ],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let out = roundtrip(&mut doc);
+        let pages = out.get_pages();
+        assert_eq!(pages.len(), 3);
+        let mid = out.get_object(pages[&2]).unwrap().as_dict().unwrap();
+        let mb = mid.get(b"MediaBox").unwrap().as_array().unwrap();
+        assert_eq!(num(&mb[2]), 300.0);
+        assert_eq!(num(&mb[3]), 400.0);
+    }
+
+    #[test]
+    fn duplicate_pages_are_distinct_objects() {
+        let mut doc = sample_doc(2);
+        rebuild(
+            &mut doc,
+            &[PageSpec::page(1, 0), PageSpec::page(1, 90), PageSpec::page(2, 0)],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let out = roundtrip(&mut doc);
+        let pages = out.get_pages();
+        assert_eq!(pages.len(), 3);
+        assert_ne!(pages[&1], pages[&2]);
+        let p1 = out.get_object(pages[&1]).unwrap().as_dict().unwrap();
+        let p2 = out.get_object(pages[&2]).unwrap().as_dict().unwrap();
+        assert!(p1.get(b"Rotate").is_err());
+        assert_eq!(p2.get(b"Rotate").unwrap().as_i64().unwrap(), 90);
+        assert_eq!(
+            p1.get(b"Contents").unwrap().as_reference().unwrap(),
+            p2.get(b"Contents").unwrap().as_reference().unwrap()
+        );
+    }
+
+    #[test]
+    fn blank_page_with_stamp_saves() {
+        use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
+        let mut doc = sample_doc(2);
+        let data: Vec<u8> = (0..4).flat_map(|_| [255u8, 0, 0, 255]).collect();
+        let stamp = crate::stamps::Stamp {
+            src: 1,
+            rect: [10.0, 10.0, 110.0, 60.0],
+            w: 2,
+            h: 2,
+            rgba_b64: B64.encode(&data),
+        };
+        crate::stamps::apply_stamps(&mut doc, &[stamp]).unwrap();
+        rebuild(
+            &mut doc,
+            &[PageSpec::page(1, 0), PageSpec { src: 0, rotation: 0, w: 0.0, h: 0.0 }],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let out = roundtrip(&mut doc);
+        assert_eq!(out.get_pages().len(), 2);
     }
 }
