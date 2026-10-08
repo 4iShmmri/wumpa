@@ -149,9 +149,9 @@ export default function SignatureModal() {
               <img src={saved} alt={t("sigAlt")} />
             </div>
             <div className="modal-actions">
-              <button onClick={close}>{t("btnCancel")}</button>
-              <button onClick={() => setDrawing(true)}>{t("btnDrawNew")}</button>
-              <button className="btn-primary" onClick={use}>{t("btnUse")}</button>
+              <button data-tip={t("tipCancelEsc")} onClick={close}>{t("btnCancel")}</button>
+              <button data-tip={t("tipSigDrawNew")} onClick={() => setDrawing(true)}>{t("btnDrawNew")}</button>
+              <button className="btn-primary" data-tip={t("tipSigUse")} onClick={use}>{t("btnUse")}</button>
             </div>
           </>
         ) : (
@@ -168,9 +168,9 @@ export default function SignatureModal() {
               <div className="sig-baseline" />
             </div>
             <div className="modal-actions">
-              <button onClick={clear}>{t("btnClear")}</button>
-              <button onClick={close}>{t("btnCancel")}</button>
-              <button className="btn-primary" disabled={!hasInk} onClick={save}>
+              <button data-tip={t("tipSigClear")} onClick={clear}>{t("btnClear")}</button>
+              <button data-tip={t("tipCancelEsc")} onClick={close}>{t("btnCancel")}</button>
+              <button className="btn-primary" data-tip={t("tipSigSave")} disabled={!hasInk} onClick={save}>
                 {t("btnSaveUse")}
               </button>
             </div>

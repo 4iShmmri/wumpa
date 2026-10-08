@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import jsQR from "jsqr";
 import { TextLayer } from "pdfjs-dist";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore, useActiveTab, type Tool } from "../store";
@@ -49,6 +50,12 @@ function popoverPos(iconLeft: number, iconTop: number, size: number, w: number, 
 const NOTE_PT = 18; // icon footprint in PDF points
 
 const objErrOnce = new Set<string>();
+
+interface QrHit {
+  data: string;
+  box: [number, number, number, number]; // normalized to the rendered page
+}
+const qrCache = new Map<string, QrHit | null>();
 
 interface CssBox {
   l: number;
@@ -274,9 +281,9 @@ function ObjectLayer({
           style={{ left: sel.l, top: Math.max(0, sel.t - 30), pointerEvents: "auto" }}
         >
           {sel.o.kind === "text" && (
-            <button onClick={() => setTextEdit({ id: sel.o.id, pdf: sel.pdf })}>{t("btnEditText")}</button>
+            <button data-tip={t("tipEditText")} onClick={() => setTextEdit({ id: sel.o.id, pdf: sel.pdf })}>{t("btnEditText")}</button>
           )}
-          <button onClick={() => deleteObject(tabId, spec.src, sel.o.id)}>{t("btnDelete")}</button>
+          <button data-tip={t("tipDelete")} onClick={() => deleteObject(tabId, spec.src, sel.o.id)}>{t("btnDelete")}</button>
         </div>
       )}
       {tool === "edit" && textEdit && (() => {
@@ -326,7 +333,7 @@ function NoteIcon(props: {
       className={"note-icon" + (props.draft ? " draft" : "")}
       style={{ left: props.left, top: props.top, width: props.size, height: props.size }}
       onClick={props.onClick}
-      title={props.draft ? t("noteUnsaved") : t("noteTitle")}
+      data-tip={props.draft ? t("noteUnsaved") : t("noteTitle")}
     >
       <svg width="68%" height="68%" viewBox="0 0 24 24" fill="none" stroke="currentColor"
         strokeWidth="2.4" strokeLinejoin="round">
@@ -365,6 +372,7 @@ function NoteEditor(props: {
       />
       <div className="row">
         <button
+          data-tip={t("tipDeleteNote")}
           onClick={() => {
             deleteNote(props.tabId, props.note.id);
             props.onDone();
@@ -372,7 +380,7 @@ function NoteEditor(props: {
         >
           {t("btnDelete")}
         </button>
-        <button className="btn-primary" onClick={save}>
+        <button className="btn-primary" data-tip={t("tipSaveEnter")} onClick={save}>
           {t("btnSave")}
         </button>
       </div>
@@ -422,6 +430,8 @@ function PdfPage({
   const [visible, setVisible] = useState(false);
   const [viewport, setViewport] = useState<PageViewport | null>(null);
   const [annots, setAnnots] = useState<ExistingAnnot[]>([]);
+  const qrKey = `${tabId}:${spec.src}:${entry.version}:${spec.rotation}`;
+  const [qrHit, setQrHit] = useState<QrHit | null>(() => qrCache.get(qrKey) ?? null);
 
   useEffect(() => {
     const el = wrapRef.current!;
@@ -477,6 +487,43 @@ function PdfPage({
     return () => {
       on = false;
     };
+  }, [viewport]);
+
+  useEffect(() => {
+    if (!viewport || spec.src === 0 || qrCache.has(qrKey)) return;
+    const timer = window.setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas?.width) return;
+      let hit: QrHit | null = null;
+      try {
+        const scale = Math.min(1, 1200 / Math.max(canvas.width, canvas.height));
+        const off = document.createElement("canvas");
+        off.width = Math.max(1, Math.round(canvas.width * scale));
+        off.height = Math.max(1, Math.round(canvas.height * scale));
+        const ctx = off.getContext("2d")!;
+        ctx.drawImage(canvas, 0, 0, off.width, off.height);
+        const img = ctx.getImageData(0, 0, off.width, off.height);
+        const code = jsQR(img.data, img.width, img.height);
+        if (code?.data) {
+          const pts = [
+            code.location.topLeftCorner, code.location.topRightCorner,
+            code.location.bottomRightCorner, code.location.bottomLeftCorner,
+          ];
+          const xs = pts.map((p) => p.x / off.width);
+          const ys = pts.map((p) => p.y / off.height);
+          hit = {
+            data: code.data,
+            box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+          };
+        }
+      } catch {
+        hit = null;
+      }
+      if (qrCache.size > 300) qrCache.clear();
+      qrCache.set(qrKey, hit);
+      setQrHit(hit);
+    }, 100);
+    return () => window.clearTimeout(timer);
   }, [viewport]);
 
   useEffect(() => {
@@ -598,6 +645,30 @@ function PdfPage({
         ref={textRef}
         style={{ "--scale-factor": zoom, "--total-scale-factor": zoom } as React.CSSProperties}
       />
+      {viewport && qrHit && (
+        <div
+          className="qr-spot"
+          data-tip={t("tipQrOnPage")}
+          style={{
+            left: qrHit.box[0] * w - 4,
+            top: qrHit.box[1] * h - 4,
+            width: (qrHit.box[2] - qrHit.box[0]) * w + 8,
+            height: (qrHit.box[3] - qrHit.box[1]) * h + 8,
+            pointerEvents: tool === "select" ? "auto" : "none",
+          }}
+          onClick={() => {
+            const st = useStore.getState();
+            st.setQrPreset(qrHit.data);
+            st.setUtilModal("qr");
+          }}
+        >
+          <span className="qr-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
+              <path d="M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h3v3h-3z M21 21h-3 M21 15v3" />
+            </svg>
+          </span>
+        </div>
+      )}
       {viewport &&
         annots.map((a, ai) => {
           if (a.subtype !== "Text") return null;
@@ -856,13 +927,13 @@ export default function Viewer() {
               <p>{t("wTagline")}</p>
             </div>
           </div>
-          <button className="btn-primary welcome-open" onClick={() => openFileDialog()}>
+          <button className="btn-primary welcome-open" data-tip={t("tipWelcomeOpen")} onClick={() => openFileDialog()}>
             {t("wOpen")}
           </button>
-          <button className="welcome-secondary" onClick={() => useStore.getState().setUtilModal("newpdf")}>
+          <button className="welcome-secondary" data-tip={t("tipWelcomeNew")} onClick={() => useStore.getState().setUtilModal("newpdf")}>
             {t("tipNewPdf")}
           </button>
-          <button className="welcome-secondary" onClick={() => mergeFiles()}>
+          <button className="welcome-secondary" data-tip={t("tipWelcomeMerge")} onClick={() => mergeFiles()}>
             {t("wMerge")}
           </button>
           <div className="welcome-recent">

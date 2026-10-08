@@ -240,7 +240,7 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
               style={{ left: b.l, top: Math.max(0, b.t - 30), pointerEvents: "auto" }}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <button onClick={() => deleteShape(tabId, sel.id)}>{t("btnDelete")}</button>
+              <button data-tip={t("tipDelete")} onClick={() => deleteShape(tabId, sel.id)}>{t("btnDelete")}</button>
             </div>
           </>
         );

@@ -67,8 +67,7 @@ body {
   background: var(--bg-chrome-2);
   padding: 6px 8px 0;
   gap: 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: visible;
 }
 
 .tab {
@@ -80,7 +79,8 @@ body {
   border-radius: 8px 8px 0 0;
   cursor: default;
   max-width: 220px;
-  min-width: 110px;
+  min-width: 0;
+  flex: 1 1 auto;
   color: var(--fg-dim);
   white-space: nowrap;
 }
@@ -146,12 +146,11 @@ body {
 
 /* ---------- Toolbar ---------- */
 .toolbar {
-  overflow-x: auto;
-  scrollbar-width: none;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 10px;
+  flex-wrap: nowrap;
+  gap: 1px;
+  padding: 6px 8px;
   background: var(--bg-chrome);
   border-bottom: 1px solid var(--border);
 }
@@ -1456,4 +1455,114 @@ body {
 .qr-actions {
   justify-content: flex-start;
   flex-wrap: wrap;
+}
+
+/* ---------- Toolbar dropdown menus ---------- */
+.tb-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tb-menu-wrap > button .tb-caret {
+  margin-inline-start: 2px;
+  opacity: 0.7;
+}
+
+.tb-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 90;
+  min-width: 200px;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: start;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-menu button:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+
+.tb-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tb-menu button svg {
+  flex-shrink: 0;
+  color: var(--fg-dim);
+}
+
+/* ---------- Clickable in-page QR codes ---------- */
+.qr-spot {
+  position: absolute;
+  z-index: 3;
+  border: 1.5px dashed transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.qr-spot:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.qr-badge {
+  position: absolute;
+  top: -8px;
+  inset-inline-end: -8px;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.qr-spot:hover .qr-badge {
+  opacity: 1;
+}
+
+/* ---------- Tooltip placement extras ---------- */
+.goto-wrap {
+  display: inline-flex;
+}
+
+.statusbar [data-tip]:hover::after {
+  top: auto;
+  bottom: calc(100% + 7px);
+}
+
+.tabbar .tab-close[data-tip]:hover::after,
+.note-popover [data-tip]:hover::after,
+.te-tools [data-tip]:hover::after {
+  left: auto;
+  inset-inline-end: 0;
+  transform: none;
 }

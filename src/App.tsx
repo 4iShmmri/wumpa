@@ -44,9 +44,10 @@ function SplitModal({ onClose }: { onClose: () => void }) {
           {t("splitPages")}
         </label>
         <div className="modal-actions">
-          <button onClick={onClose}>{t("btnCancel")}</button>
+          <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
           <button
             className="btn-primary"
+            data-tip={t("tipSplitGo")}
             onClick={() => {
               onClose();
               splitEvery(n);

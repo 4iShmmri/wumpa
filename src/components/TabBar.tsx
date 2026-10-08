@@ -11,25 +11,26 @@ export default function TabBar() {
 
   return (
     <div className="tabbar">
-      {tabs.map((t) => (
+      {tabs.map((tb) => (
         <div
-          key={t.id}
-          className={"tab" + (t.id === activeId ? " active" : "")}
-          onClick={() => useStore.getState().setActive(t.id)}
+          key={tb.id}
+          className={"tab" + (tb.id === activeId ? " active" : "")}
+          onClick={() => useStore.getState().setActive(tb.id)}
           onAuxClick={(e) => {
-            if (e.button === 1) closeTabSafe(t.id);
+            if (e.button === 1) closeTabSafe(tb.id);
           }}
-          title={t.path}
+          title={tb.path}
         >
           <span className="tab-name">
-            {t.dirty && <span className="dirty-dot" />}
-            {t.name}
+            {tb.dirty && <span className="dirty-dot" />}
+            {tb.name}
           </span>
           <span
             className="tab-close"
+            data-tip={t("tipCloseTab")}
             onClick={(e) => {
               e.stopPropagation();
-              closeTabSafe(t.id);
+              closeTabSafe(tb.id);
             }}
           >
             ×

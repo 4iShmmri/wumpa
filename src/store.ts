@@ -31,6 +31,7 @@ interface AppState {
   stampEditing: string | null;
   signatureModalOpen: boolean;
   utilModal: "compress" | "qr" | "newpdf" | "table" | null;
+  qrPreset: string | null;
   shapeSel: { tabId: string; id: string } | null;
   drawKind: ShapeKind;
   drawColor: [number, number, number];
@@ -57,6 +58,7 @@ interface AppState {
   setStampEditing: (id: string | null) => void;
   setSignatureModal: (open: boolean) => void;
   setUtilModal: (m: "compress" | "qr" | "newpdf" | "table" | null) => void;
+  setQrPreset: (v: string | null) => void;
   setShapeSel: (sel: { tabId: string; id: string } | null) => void;
   setDrawKind: (k: ShapeKind) => void;
   setDrawColor: (c: [number, number, number]) => void;
@@ -108,6 +110,7 @@ export const useStore = create<AppState>((set, get) => ({
   stampEditing: null,
   signatureModalOpen: false,
   utilModal: null,
+  qrPreset: null,
   shapeSel: null,
   drawKind: "ink",
   drawColor: [0.86, 0.21, 0.18],
@@ -280,6 +283,7 @@ export const useStore = create<AppState>((set, get) => ({
   setStampEditing: (stampEditing) => set({ stampEditing }),
   setSignatureModal: (signatureModalOpen) => set({ signatureModalOpen }),
   setUtilModal: (utilModal) => set({ utilModal }),
+  setQrPreset: (qrPreset) => set({ qrPreset }),
   setShapeSel: (shapeSel) =>
     set((s) => ({
       shapeSel,

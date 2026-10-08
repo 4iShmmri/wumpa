@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore, useActiveTab } from "../store";
 import type { ShapeKind } from "../types";
 import {
@@ -14,7 +14,11 @@ const DRAW_COLORS: [number, number, number][] = [
   [0.86, 0.21, 0.18], [0.1, 0.1, 0.1], [0.11, 0.3, 0.85],
   [0.09, 0.55, 0.25], [0.95, 0.6, 0.05], [0.55, 0.15, 0.6],
 ];
+const DRAW_COLOR_NAMES = [
+  "colorRed", "colorBlack", "colorBlue", "colorGreen", "colorOrange", "colorPurple",
+] as const;
 const DRAW_WIDTHS = [1.5, 2.5, 4.5];
+const DRAW_WIDTH_NAMES = ["widthThin", "widthMedium", "widthThick"] as const;
 const cssColor = (c: [number, number, number]) =>
   `rgb(${c.map((v) => Math.round(v * 255)).join(",")})`;
 
@@ -46,19 +50,19 @@ function DrawPopover() {
         <button
           key={k}
           className={"dk" + (drawKind === k ? " on" : "")}
-          title={t(("k" + k[0].toUpperCase() + k.slice(1)) as "kInk" | "kRect" | "kEllipse" | "kLine" | "kArrow")}
+          data-tip={t(("k" + k[0].toUpperCase() + k.slice(1)) as "kInk" | "kRect" | "kEllipse" | "kLine" | "kArrow")}
           onClick={() => st().setDrawKind(k)}
         >
           <KindIcon k={k} />
         </button>
       ))}
       <div className="psep" />
-      {DRAW_COLORS.map((c) => (
+      {DRAW_COLORS.map((c, ci) => (
         <button
           key={c.join()}
           className={"cdot" + (drawColor.join() === c.join() ? " on" : "")}
           style={{ background: cssColor(c) }}
-          data-tip={t("tipColor")}
+          data-tip={t("tipDrawColor", { c: t(DRAW_COLOR_NAMES[ci]) })}
           onClick={() => st().setDrawColor(c)}
         />
       ))}
@@ -67,7 +71,7 @@ function DrawPopover() {
         <button
           key={w}
           className={"wdot" + (drawWidth === w ? " on" : "")}
-          title={`${w}pt`}
+          data-tip={t("tipWidth", { w: t(DRAW_WIDTH_NAMES[i]) })}
           onClick={() => st().setDrawWidth(w)}
         >
           <i style={{ width: 4 + i * 3, height: 4 + i * 3 }} />
@@ -116,7 +120,74 @@ const icons = {
   qr: "M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h3v3h-3z M21 21h-3 M21 15v3",
   image: "M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M21 15l-5-5L5 21",
   table: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 10h18 M3 15h18 M9 3v18 M15 3v18",
+  insertMenu: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M12 8v8 M8 12h8",
+  organize: "M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z",
 };
+
+type MenuItem =
+  | { sep: true }
+  | { icon: string; label: string; disabled?: boolean; run: () => void };
+
+function ToolbarMenu({ icon, label, items }: { icon: string; label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
+
+  return (
+    <span className="tb-menu-wrap" ref={wrapRef}>
+      <button
+        className={"txt" + (open ? " active" : "")}
+        data-tip={open ? undefined : label}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <I d={icon} size={16} />
+        <svg className="tb-caret" width="9" height="9" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="tb-menu">
+          {items.map((it, i) =>
+            "sep" in it ? (
+              <div key={i} className="ctx-sep" />
+            ) : (
+              <button
+                key={i}
+                disabled={it.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  it.run();
+                }}
+              >
+                <I d={it.icon} size={15} />
+                <span>{it.label}</span>
+              </button>
+            ),
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
 
 export default function Toolbar({ onSplit }: { onSplit: () => void }) {
   const t = useT();
@@ -148,6 +219,24 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
     st().patchTab(tab.id, { zoom: Math.max(0.25, Math.min(6, Math.round(z * 100) / 100)) });
   };
 
+  const toggleTool = (k: typeof tool) => st().setTool(tool === k ? "select" : k);
+
+  const insertItems: MenuItem[] = [
+    { icon: icons.image, label: t("tipInsertImage"), disabled: !has, run: () => void insertImageFromFile() },
+    { icon: icons.table, label: t("tipInsertTable"), disabled: !has, run: () => st().setUtilModal("table") },
+  ];
+
+  const organizeItems: MenuItem[] = [
+    { icon: icons.rotL, label: t("tipRotL"), disabled: !has, run: () => rotateSelection(-90) },
+    { icon: icons.rotR, label: t("tipRotR"), disabled: !has, run: () => rotateSelection(90) },
+    { icon: icons.del, label: t("tipDelPages"), disabled: !has, run: () => deleteSelection() },
+    { icon: icons.extract, label: t("ctxExtract"), disabled: !has, run: () => void extractSelected() },
+    { sep: true },
+    { icon: icons.merge, label: t("wMerge"), run: () => void mergeFiles() },
+    { icon: icons.split, label: t("miSplit"), disabled: !has, run: onSplit },
+    { icon: icons.compress, label: t("tipCompress"), disabled: !has, run: () => st().setUtilModal("compress") },
+  ];
+
   return (
     <div className="toolbar">
       <button data-tip={t("tipNewPdf")} onClick={() => st().setUtilModal("newpdf")}><I d={icons.newDoc} /></button>
@@ -166,50 +255,33 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       <button data-tip={t("tipZoomIn")} disabled={!has} onClick={() => tab && setZoom(tab.zoom * 1.2)}><I d={icons.zoomIn} /></button>
       <button data-tip={t("tipFit")} disabled={!has} onClick={() => window.dispatchEvent(new CustomEvent("fitwidth"))}><I d={icons.fit} /></button>
       <div className="sep" />
-      <button data-tip={t("tipRotL")} disabled={!has} onClick={() => rotateSelection(-90)}><I d={icons.rotL} /></button>
-      <button data-tip={t("tipRotR")} disabled={!has} onClick={() => rotateSelection(90)}><I d={icons.rotR} /></button>
-      <button data-tip={t("tipDelPages")} disabled={!has} onClick={() => deleteSelection()}><I d={icons.del} /></button>
-      <button data-tip={t("tipExtract")} disabled={!has} onClick={() => extractSelected()}><I d={icons.extract} /></button>
-      <div className="sep" />
-      <button className="txt" data-tip={t("tipMerge")} onClick={() => mergeFiles()}>
-        <I d={icons.merge} />&nbsp;{t("btnMerge")}
-      </button>
-      <button className="txt" data-tip={t("tipSplit")} disabled={!has} onClick={onSplit}>
-        <I d={icons.split} />&nbsp;{t("btnSplit")}
-      </button>
-      <button data-tip={t("tipCompress")} disabled={!has} onClick={() => st().setUtilModal("compress")}><I d={icons.compress} /></button>
-      <div className="sep" />
       <button data-tip={t("tipHighlight")} disabled={!has} onClick={() => highlightSelection()}><I d={icons.highlight} /></button>
-      <button
-        data-tip={t("tipNote")}
-        disabled={!has}
-        className={tool === "note" ? "active" : ""}
-        onClick={() => st().setTool(tool === "note" ? "select" : "note")}
-      >
+      <button data-tip={t("tipNote")} disabled={!has} className={tool === "note" ? "active" : ""}
+        onClick={() => toggleTool("note")}>
         <I d={icons.note} />
       </button>
-      <button
-        data-tip={t("tipEdit")}
-        disabled={!has}
-        className={tool === "edit" ? "active" : ""}
-        onClick={() => st().setTool(tool === "edit" ? "select" : "edit")}
-      >
-        <I d={icons.editObj} />
-      </button>
-      <button
-        data-tip={t("tipErase")}
-        disabled={!has}
-        className={tool === "erase" ? "active" : ""}
-        onClick={() => st().setTool(tool === "erase" ? "select" : "erase")}
-      >
-        <I d={icons.erase} />
-      </button>
-      <button
-        data-tip={t("tipText")}
-        disabled={!has}
-        className={tool === "text" ? "active" : ""}
-        onClick={() => st().setTool(tool === "text" ? "select" : "text")}
-      >
+      <span className="draw-wrap">
+        <button
+          data-tip={t("tipDraw")}
+          disabled={!has}
+          className={tool === "draw" ? "active" : ""}
+          onClick={() => {
+            if (tool !== "draw") {
+              st().setTool("draw");
+              setDrawOpen(true);
+            } else if (drawOpen) {
+              setDrawOpen(false);
+            } else {
+              st().setTool("select");
+            }
+          }}
+        >
+          <I d={icons.draw} />
+        </button>
+        {drawOpen && <DrawPopover />}
+      </span>
+      <button data-tip={t("tipText")} disabled={!has} className={tool === "text" ? "active" : ""}
+        onClick={() => toggleTool("text")}>
         <I d={icons.text} />
       </button>
       <button
@@ -233,37 +305,21 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       >
         <I d={icons.sign} />
       </button>
-      <span className="draw-wrap">
-        <button
-          data-tip={t("tipDraw")}
-          disabled={!has}
-          className={tool === "draw" ? "active" : ""}
-          onClick={() => {
-            if (tool !== "draw") {
-              st().setTool("draw");
-              setDrawOpen(true);
-            } else if (drawOpen) {
-              setDrawOpen(false);
-            } else {
-              st().setTool("select");
-            }
-          }}
-        >
-          <I d={icons.draw} />
-        </button>
-        {drawOpen && <DrawPopover />}
-      </span>
+      <button data-tip={t("tipEdit")} disabled={!has} className={tool === "edit" ? "active" : ""}
+        onClick={() => toggleTool("edit")}>
+        <I d={icons.editObj} />
+      </button>
+      <button data-tip={t("tipErase")} disabled={!has} className={tool === "erase" ? "active" : ""}
+        onClick={() => toggleTool("erase")}>
+        <I d={icons.erase} />
+      </button>
       <div className="sep" />
-      <button data-tip={t("tipInsertImage")} disabled={!has} onClick={() => insertImageFromFile()}><I d={icons.image} /></button>
-      <button data-tip={t("tipInsertTable")} disabled={!has} onClick={() => st().setUtilModal("table")}><I d={icons.table} /></button>
+      <ToolbarMenu icon={icons.insertMenu} label={t("menuInsert")} items={insertItems} />
+      <ToolbarMenu icon={icons.organize} label={t("menuOrganize")} items={organizeItems} />
       <div className="spacer" />
       <button data-tip={t("tipQr")} onClick={() => st().setUtilModal("qr")}><I d={icons.qr} /></button>
-      <button
-        data-tip={t("tipSearch")}
-        disabled={!has}
-        className={searchOpen ? "active" : ""}
-        onClick={() => st().setSearch({ open: !searchOpen })}
-      >
+      <button data-tip={t("tipSearch")} disabled={!has} className={searchOpen ? "active" : ""}
+        onClick={() => st().setSearch({ open: !searchOpen })}>
         <I d={icons.search} />
       </button>
       <button

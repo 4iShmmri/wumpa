@@ -5,6 +5,7 @@ import { STAMP_FONT, STAMP_LINE } from "../stamps";
 import { useT } from "../i18n";
 
 const COLORS = ["#111111", "#c0392b", "#1d4ed8"];
+const COLOR_NAMES = ["colorBlack", "colorRed", "colorBlue"] as const;
 
 export default function TextEditPopover({
   entry, tabId, src, objId, bbox, left, top, zoom, onDone,
@@ -104,22 +105,22 @@ export default function TextEditPopover({
         onChange={(e) => setText(e.target.value)}
       />
       <div className="te-tools">
-        <button title={t("tipSmaller")} onClick={() => setSize((v) => Math.max(6, v - 2))}>A−</button>
-        <button title={t("tipLarger")} onClick={() => setSize((v) => Math.min(120, v + 2))}>A+</button>
+        <button data-tip={t("tipSmaller")} onClick={() => setSize((v) => Math.max(6, v - 2))}>A−</button>
+        <button data-tip={t("tipLarger")} onClick={() => setSize((v) => Math.min(120, v + 2))}>A+</button>
         <span className="te-size">{Math.round(size)}pt</span>
-        {COLORS.map((c) => (
+        {COLORS.map((c, ci) => (
           <button
             key={c}
             className={"dot" + (color === c ? " on" : "")}
             style={{ background: c }}
-            title={t("tipColor")}
+            data-tip={t("tipTextColor", { c: t(COLOR_NAMES[ci]) })}
             onClick={() => setColor(c)}
           />
         ))}
       </div>
       <div className="row">
-        <button onClick={onDone}>{t("btnCancel")}</button>
-        <button className="btn-primary" onClick={replace}>{t("btnReplace")}</button>
+        <button data-tip={t("tipCancelEsc")} onClick={onDone}>{t("btnCancel")}</button>
+        <button className="btn-primary" data-tip={t("tipReplaceEnter")} onClick={replace}>{t("btnReplace")}</button>
       </div>
     </div>
   );

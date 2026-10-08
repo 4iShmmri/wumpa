@@ -9,6 +9,7 @@ import {
 } from "../stamps";
 
 const COLORS = ["#111111", "#c0392b", "#1d4ed8"];
+const COLOR_NAMES = ["colorBlack", "colorRed", "colorBlue"] as const;
 
 interface Box {
   l: number;
@@ -211,7 +212,7 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                   {s.kind === "text" && (
                     <>
                       <button
-                        title={t("tipSmaller")}
+                        data-tip={t("tipSmaller")}
                         onClick={() =>
                           updateTextStamp(tabId, s.id, {
                             size: Math.max(6, (s.size ?? 16) - 2),
@@ -221,7 +222,7 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                         A−
                       </button>
                       <button
-                        title={t("tipLarger")}
+                        data-tip={t("tipLarger")}
                         onClick={() =>
                           updateTextStamp(tabId, s.id, {
                             size: Math.min(120, (s.size ?? 16) + 2),
@@ -230,24 +231,24 @@ export default function StampLayer({ tabId, src, stamps, viewport, zoom }: {
                       >
                         A+
                       </button>
-                      {COLORS.map((c) => (
+                      {COLORS.map((c, ci) => (
                         <button
                           key={c}
                           className={"dot" + (s.color === c ? " on" : "")}
                           style={{ background: c }}
-                          title={t("tipColor")}
+                          data-tip={t("tipTextColor", { c: t(COLOR_NAMES[ci]) })}
                           onClick={() => updateTextStamp(tabId, s.id, { color: c })}
                         />
                       ))}
                       <button
-                        title={t("tipEditText")}
+                        data-tip={t("tipEditText")}
                         onClick={() => useStore.getState().setStampEditing(s.id)}
                       >
                         {t("btnEdit")}
                       </button>
                     </>
                   )}
-                  <button title={t("tipDelete")} onClick={() => deleteStamp(tabId, s.id)}>
+                  <button data-tip={t("tipDelete")} onClick={() => deleteStamp(tabId, s.id)}>
                     {t("btnDelete")}
                   </button>
                 </div>

@@ -59,8 +59,8 @@ function CompressModal({ onClose }: { onClose: () => void }) {
         ))}
       </div>
       <div className="modal-actions">
-        <button onClick={onClose}>{t("btnCancel")}</button>
-        <button className="btn-primary" onClick={run}>{t("btnCompress")}</button>
+        <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
+        <button className="btn-primary" data-tip={t("tipCompressGo")} onClick={run}>{t("btnCompress")}</button>
       </div>
     </Modal>
   );
@@ -127,8 +127,8 @@ function NewPdfModal({ onClose }: { onClose: () => void }) {
         </label>
       </div>
       <div className="modal-actions">
-        <button onClick={onClose}>{t("btnCancel")}</button>
-        <button className="btn-primary" onClick={run}>{t("btnCreate")}</button>
+        <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
+        <button className="btn-primary" data-tip={t("tipCreateGo")} onClick={run}>{t("btnCreate")}</button>
       </div>
     </Modal>
   );
@@ -161,8 +161,8 @@ function TableModal({ onClose }: { onClose: () => void }) {
       </div>
       <p className="modal-hint">{t("tableHint")}</p>
       <div className="modal-actions">
-        <button onClick={onClose}>{t("btnCancel")}</button>
-        <button className="btn-primary" onClick={run}>{t("btnInsert")}</button>
+        <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
+        <button className="btn-primary" data-tip={t("tipInsertGo")} onClick={run}>{t("btnInsert")}</button>
       </div>
     </Modal>
   );
@@ -171,8 +171,9 @@ function TableModal({ onClose }: { onClose: () => void }) {
 function QrModal({ onClose }: { onClose: () => void }) {
   const t = useT();
   const tab = useActiveTab();
+  const preset = useRef(useStore.getState().qrPreset).current;
   const [mode, setMode] = useState<"camera" | "page">("camera");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(preset);
   const [notice, setNotice] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -300,9 +301,10 @@ function QrModal({ onClose }: { onClose: () => void }) {
         <>
           <pre className="qr-result">{result}</pre>
           <div className="modal-actions qr-actions">
-            <button onClick={copy}>{t("btnCopy")}</button>
+            <button data-tip={t("tipCopyClipboard")} onClick={copy}>{t("btnCopy")}</button>
             {tab && (
               <button
+                data-tip={t("tipQrInsert")}
                 onClick={() => {
                   insertTextAtCenter(result, 14);
                   onClose();
@@ -313,6 +315,7 @@ function QrModal({ onClose }: { onClose: () => void }) {
             )}
             {isLink && (
               <button
+                data-tip={t("tipQrOpenLink")}
                 onClick={async () => {
                   try {
                     await openExternalUrl(result);
@@ -326,6 +329,7 @@ function QrModal({ onClose }: { onClose: () => void }) {
               </button>
             )}
             <button
+              data-tip={t("tipScanAgain")}
               onClick={() => {
                 setResult(null);
                 if (mode === "page") void scanPage();
@@ -337,7 +341,7 @@ function QrModal({ onClose }: { onClose: () => void }) {
         </>
       )}
       <div className="modal-actions">
-        <button onClick={onClose}>{t("btnCancel")}</button>
+        <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
       </div>
     </Modal>
   );
@@ -345,7 +349,11 @@ function QrModal({ onClose }: { onClose: () => void }) {
 
 export default function UtilModals() {
   const modal = useStore((s) => s.utilModal);
-  const close = () => useStore.getState().setUtilModal(null);
+  const close = () => {
+    const st = useStore.getState();
+    st.setQrPreset(null);
+    st.setUtilModal(null);
+  };
   if (!modal) return null;
   if (modal === "compress") return <CompressModal onClose={close} />;
   if (modal === "newpdf") return <NewPdfModal onClose={close} />;

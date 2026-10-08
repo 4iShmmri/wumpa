@@ -42,23 +42,24 @@ export default function StatusBar() {
               >
                 ‹
               </button>
-              <input
-                type="number"
-                min={1}
-                max={total}
-                title={t("tipGoToPage")}
-                value={editVal ?? String(tab.currentPage)}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setEditVal(e.target.value)}
-                onBlur={(e) => commit(e.target)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commit(e.currentTarget);
-                  if (e.key === "Escape") {
-                    setEditVal(null);
-                    e.currentTarget.blur();
-                  }
-                }}
-              />
+              <span className="goto-wrap" data-tip={t("tipGoToPage")}>
+                <input
+                  type="number"
+                  min={1}
+                  max={total}
+                  value={editVal ?? String(tab.currentPage)}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setEditVal(e.target.value)}
+                  onBlur={(e) => commit(e.target)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commit(e.currentTarget);
+                    if (e.key === "Escape") {
+                      setEditVal(null);
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+              </span>
               <span className="page-total">{t("sbOf", { total })}</span>
               <button
                 data-tip={t("tipNextPage")}
