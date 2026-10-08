@@ -4,6 +4,7 @@ import type { ShapeKind } from "../types";
 import {
   openFileDialog, saveActive, mergeFiles, extractSelected,
   rotateSelection, deleteSelection, highlightSelection, printActive,
+  insertImageFromFile,
 } from "../actions";
 import { useT } from "../i18n";
 import type { LangPref } from "../store";
@@ -110,6 +111,11 @@ const icons = {
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
+  newDoc: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M12 11v6 M9 14h6",
+  compress: "M8 3v4a1 1 0 0 1-1 1H3 M16 3v4a1 1 0 0 0 1 1h4 M8 21v-4a1 1 0 0 0-1-1H3 M16 21v-4a1 1 0 0 1 1-1h4",
+  qr: "M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 15h3v3h-3z M21 21h-3 M21 15v3",
+  image: "M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M21 15l-5-5L5 21",
+  table: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 10h18 M3 15h18 M9 3v18 M15 3v18",
 };
 
 export default function Toolbar({ onSplit }: { onSplit: () => void }) {
@@ -144,6 +150,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
 
   return (
     <div className="toolbar">
+      <button data-tip={t("tipNewPdf")} onClick={() => st().setUtilModal("newpdf")}><I d={icons.newDoc} /></button>
       <button data-tip={t("tipOpen")} onClick={() => openFileDialog()}><I d={icons.open} /></button>
       <button data-tip={t("tipSave")} disabled={!has} onClick={() => saveActive(false)}><I d={icons.save} /></button>
       <button className="txt" data-tip={t("tipSaveAs")} disabled={!has} onClick={() => saveActive(true)}>
@@ -170,6 +177,7 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
       <button className="txt" data-tip={t("tipSplit")} disabled={!has} onClick={onSplit}>
         <I d={icons.split} />&nbsp;{t("btnSplit")}
       </button>
+      <button data-tip={t("tipCompress")} disabled={!has} onClick={() => st().setUtilModal("compress")}><I d={icons.compress} /></button>
       <div className="sep" />
       <button data-tip={t("tipHighlight")} disabled={!has} onClick={() => highlightSelection()}><I d={icons.highlight} /></button>
       <button
@@ -245,7 +253,11 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         </button>
         {drawOpen && <DrawPopover />}
       </span>
+      <div className="sep" />
+      <button data-tip={t("tipInsertImage")} disabled={!has} onClick={() => insertImageFromFile()}><I d={icons.image} /></button>
+      <button data-tip={t("tipInsertTable")} disabled={!has} onClick={() => st().setUtilModal("table")}><I d={icons.table} /></button>
       <div className="spacer" />
+      <button data-tip={t("tipQr")} onClick={() => st().setUtilModal("qr")}><I d={icons.qr} /></button>
       <button
         data-tip={t("tipSearch")}
         disabled={!has}

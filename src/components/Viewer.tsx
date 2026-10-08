@@ -859,6 +859,9 @@ export default function Viewer() {
           <button className="btn-primary welcome-open" onClick={() => openFileDialog()}>
             {t("wOpen")}
           </button>
+          <button className="welcome-secondary" onClick={() => useStore.getState().setUtilModal("newpdf")}>
+            {t("tipNewPdf")}
+          </button>
           <button className="welcome-secondary" onClick={() => mergeFiles()}>
             {t("wMerge")}
           </button>

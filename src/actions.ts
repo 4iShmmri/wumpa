@@ -3,11 +3,12 @@ import type { Tab, Note, ObjectEdit, StampItem, ShapeItem } from "./types";
 import {
   pickPdfs, pickSavePath, pickSavePathWithExt, pickDirectory, saveDocument,
   mergeDocuments, splitDocument, baseName, dirName, confirmDialog,
-  printDocument, savePng, inTauri,
+  printDocument, savePng, inTauri, compressPdf, createBlankPdf,
+  readImageB64, pickImagePath,
 } from "./backend";
 import { getDoc, getPage, getPageText, docPath, specBase } from "./pdf";
 import { report } from "./errors";
-import { measureText, rasterizeStamps } from "./stamps";
+import { measureText, rasterizeStamps, addTextStampAt, addImageStamp, loadImage } from "./stamps";
 import { t } from "./i18n";
 
 const ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;
@@ -516,4 +517,145 @@ export function searchStep(dir: 1 | -1) {
   const current = (search.current + dir + search.matches.length) % search.matches.length;
   setSearch({ current });
   scrollTo(search.matches[current] + 1);
+}
+
+function humanSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+export async function compressActive(quality: number, maxDim: number) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const out = await pickSavePathWithExt(
+    tab.name.replace(/\.pdf$/i, "") + "-compressed.pdf",
+    "pdf",
+    "PDF",
+  );
+  if (!out) return;
+  const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
+  try {
+    const [orig, next] = await compressPdf(tab.path, outPath, quality, maxDim);
+    const pct = orig > 0 ? Math.max(0, Math.round((1 - next / orig) * 100)) : 0;
+    S().setStatus(t("stCompressed", { orig: humanSize(orig), new: humanSize(next), pct }));
+    await openPaths([outPath]);
+  } catch (e) {
+    report(t("stCompressFailed"), e);
+  }
+}
+
+export async function createNewPdf(w: number, h: number, pages: number) {
+  try {
+    const path = await createBlankPdf(w, h, pages);
+    if (!path) return;
+    await openPaths([path]);
+    const tab = S().tabs.find((tb) => tb.path === path);
+    if (tab) S().patchTab(tab.id, { name: t("untitled") });
+  } catch (e) {
+    report(t("stNewFailed"), e);
+  }
+}
+
+async function currentPageSize(tab: Tab): Promise<[number, number]> {
+  const spec = tab.pages[tab.currentPage - 1] ?? tab.pages[0];
+  const entry = spec.src === 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
+  const base = specBase(entry, spec);
+  const w = base?.w ?? 612;
+  const h = base?.h ?? 792;
+  return spec.rotation % 180 !== 0 ? [h, w] : [w, h];
+}
+
+export async function insertImageFromFile() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const spec = tab.pages[tab.currentPage - 1];
+  if (!spec) return;
+  if (spec.src === 0) {
+    S().setStatus(t("stCouldNotPlace"));
+    return;
+  }
+  try {
+    const path = await pickImagePath();
+    if (!path) return;
+    const dataUrl = await readImageB64(path);
+    if (!dataUrl) return;
+    const img = await loadImage(dataUrl);
+    const [pw, ph] = await currentPageSize(tab);
+    const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+    const w = Math.min(img.naturalWidth, pw * 0.6);
+    const hh = w / Math.max(0.05, aspect);
+    const x1 = (pw - w) / 2;
+    const y1 = (ph - hh) / 2;
+    addImageStamp(tab.id, spec.src, [x1, y1, x1 + w, y1 + hh], dataUrl);
+  } catch (e) {
+    report(t("stImageFailed"), e);
+  }
+}
+
+export async function insertTableGrid(rows: number, cols: number) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const spec = tab.pages[tab.currentPage - 1];
+  if (!spec) return;
+  if (spec.src === 0) {
+    S().setStatus(t("stCouldNotPlace"));
+    return;
+  }
+  try {
+    const [pw, ph] = await currentPageSize(tab);
+    const CELL_W = 90;
+    const CELL_H = 28;
+    let tw = cols * CELL_W;
+    let th = rows * CELL_H;
+    const scale = Math.min(1, (pw * 0.9) / tw);
+    tw *= scale;
+    th *= scale;
+    const PX = 4;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(tw * PX);
+    canvas.height = Math.round(th * PX);
+    const ctx = canvas.getContext("2d")!;
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 1 * PX * scale;
+    for (let r = 1; r < rows; r++) {
+      const y = (th / rows) * r * PX;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+    for (let c = 1; c < cols; c++) {
+      const x = (tw / cols) * c * PX;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1.5 * PX * scale;
+    ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, canvas.width - ctx.lineWidth, canvas.height - ctx.lineWidth);
+    const dataUrl = canvas.toDataURL("image/png");
+    const x1 = (pw - tw) / 2;
+    const y1 = (ph - th) / 2;
+    addImageStamp(tab.id, spec.src, [x1, y1, x1 + tw, y1 + th], dataUrl);
+  } catch (e) {
+    report(t("stImageFailed"), e);
+  }
+}
+
+export function insertTextAtCenter(text: string, size: number) {
+  const tab = getActiveTab();
+  if (!tab) return;
+  const spec = tab.pages[tab.currentPage - 1];
+  if (!spec || spec.src === 0) return;
+  void (async () => {
+    try {
+      const [pw, ph] = await currentPageSize(tab);
+      const { w, h } = measureText(text, size);
+      const x1 = (pw - w) / 2;
+      const y2 = (ph + h) / 2;
+      addTextStampAt(tab.id, spec.src, [x1, y2 - h, x1 + w, y2], text, size);
+    } catch (e) {
+      report(t("stCouldNotPlace"), e);
+    }
+  })();
 }

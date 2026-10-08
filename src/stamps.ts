@@ -80,6 +80,43 @@ export function addSignatureStamp(
   return stamp;
 }
 
+export function addTextStampAt(
+  tabId: string,
+  src: number,
+  rect: [number, number, number, number],
+  text: string,
+  size: number,
+) {
+  const stamp: StampItem = {
+    id: crypto.randomUUID(),
+    src,
+    rect,
+    kind: "text",
+    text,
+    size,
+    color: "#111111",
+  };
+  S().mutateDoc(tabId, (t) => ({ stamps: [...t.stamps, stamp] }));
+  return stamp;
+}
+
+export function addImageStamp(
+  tabId: string,
+  src: number,
+  rect: [number, number, number, number],
+  dataUrl: string,
+) {
+  const stamp: StampItem = {
+    id: crypto.randomUUID(),
+    src,
+    rect,
+    kind: "image",
+    sigDataUrl: dataUrl,
+  };
+  S().mutateDoc(tabId, (t) => ({ stamps: [...t.stamps, stamp] }));
+  return stamp;
+}
+
 export function moveStamp(tabId: string, id: string, dx: number, dy: number) {
   S().mutateDoc(tabId, (t) => ({
     stamps: t.stamps.map((s) =>

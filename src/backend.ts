@@ -169,6 +169,45 @@ export async function splitDocument(
   await invoke("split_document", { srcPath, parts });
 }
 
+export async function compressPdf(
+  srcPath: string,
+  outPath: string,
+  quality: number,
+  maxDim: number,
+): Promise<[number, number]> {
+  if (!inTauri) return [0, 0];
+  return await invoke<[number, number]>("compress_pdf", { srcPath, outPath, quality, maxDim });
+}
+
+export async function createBlankPdf(w: number, h: number, pages: number): Promise<string | null> {
+  if (!inTauri) return null;
+  return await invoke<string>("create_blank_pdf", { w, h, pages });
+}
+
+export async function readImageB64(path: string): Promise<string | null> {
+  if (!inTauri) return null;
+  return await invoke<string>("read_image_b64", { path });
+}
+
+export async function pickImagePath(): Promise<string | null> {
+  if (!inTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = await open({
+    multiple: false,
+    filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg"] }],
+  });
+  return typeof res === "string" ? res : null;
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!inTauri) {
+    window.open(url, "_blank");
+    return;
+  }
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+}
+
 export async function onFileDrop(cb: (paths: string[]) => void): Promise<() => void> {
   if (!inTauri) return () => {};
   const { getCurrentWebview } = await import("@tauri-apps/api/webview");

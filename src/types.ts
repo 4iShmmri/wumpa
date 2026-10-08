@@ -41,7 +41,7 @@ export interface StampItem {
   id: string;
   src: number;
   rect: [number, number, number, number];
-  kind: "text" | "signature";
+  kind: "text" | "signature" | "image";
   text?: string;
   size?: number;
   color?: string;
