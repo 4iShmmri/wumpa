@@ -127,6 +127,7 @@ const icons = {
 
 type MenuItem =
   | { sep: true }
+  | { header: string }
   | { icon: string; label: string; disabled?: boolean; run: () => void };
 
 function ToolbarMenu({ icon, label, items }: { icon: string; label: string; items: MenuItem[] }) {
@@ -166,20 +167,23 @@ function ToolbarMenu({ icon, label, items }: { icon: string; label: string; item
         </svg>
       </button>
       {open && (
-        <div className="tb-menu">
+        <div className="tb-menu" role="menu" aria-label={label}>
           {items.map((it, i) =>
             "sep" in it ? (
-              <div key={i} className="ctx-sep" />
+              <div key={i} className="ctx-sep" role="separator" />
+            ) : "header" in it ? (
+              <div key={i} className="tb-menu-head">{it.header}</div>
             ) : (
               <button
                 key={i}
+                role="menuitem"
                 disabled={it.disabled}
                 onClick={() => {
                   setOpen(false);
                   it.run();
                 }}
               >
-                <I d={it.icon} size={15} />
+                <I d={it.icon} size={16} />
                 <span>{it.label}</span>
               </button>
             ),
@@ -228,15 +232,18 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
   ];
 
   const organizeItems: MenuItem[] = [
+    { header: t("mhPages") },
     { icon: icons.rotL, label: t("tipRotL"), disabled: !has, run: () => rotateSelection(-90) },
     { icon: icons.rotR, label: t("tipRotR"), disabled: !has, run: () => rotateSelection(90) },
     { icon: icons.del, label: t("tipDelPages"), disabled: !has, run: () => deleteSelection() },
     { icon: icons.extract, label: t("ctxExtract"), disabled: !has, run: () => void extractSelected() },
     { sep: true },
+    { header: t("mhDocument") },
     { icon: icons.merge, label: t("wMerge"), run: () => void mergeFiles() },
     { icon: icons.split, label: t("miSplit"), disabled: !has, run: onSplit },
     { icon: icons.compress, label: t("tipCompress"), disabled: !has, run: () => st().setUtilModal("compress") },
     { sep: true },
+    { header: t("mhReview") },
     { icon: icons.compare, label: t("cmpMenu"), disabled: !has, run: () => void compareActive() },
   ];
 

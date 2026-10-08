@@ -260,6 +260,9 @@ const dict = {
   menuInsert: { en: "Insert", ar: "إدراج" },
   menuOrganize: { en: "Organize", ar: "تنظيم" },
   miSplit: { en: "Split…", ar: "تقسيم…" },
+  mhPages: { en: "Pages", ar: "الصفحات" },
+  mhDocument: { en: "Document", ar: "المستند" },
+  mhReview: { en: "Review", ar: "المراجعة" },
 
   cmpMenu: { en: "Compare…", ar: "مقارنة…" },
   tipCompare: { en: "Compare with another PDF", ar: "مقارنة مع ملف PDF آخر" },
