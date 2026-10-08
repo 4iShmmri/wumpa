@@ -9,9 +9,10 @@ import StatusBar from "./components/StatusBar";
 import { useStore } from "./store";
 import {
   openPaths, openFileDialog, saveActive, closeTabSafe,
-  deleteSelection, splitEvery,
+  deleteSelection, splitEvery, deleteObject,
 } from "./actions";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
+import { schedulePreview } from "./preview";
 
 function SplitModal({ onClose }: { onClose: () => void }) {
   const [n, setN] = useState(1);
@@ -56,6 +57,12 @@ function SplitModal({ onClose }: { onClose: () => void }) {
 
 export default function App() {
   const [splitOpen, setSplitOpen] = useState(false);
+  const activeEdits = useStore((s) => s.tabs.find((t) => t.id === s.activeId)?.edits);
+
+  useEffect(() => {
+    const id = useStore.getState().activeId;
+    if (id && activeEdits) schedulePreview(id);
+  }, [activeEdits]);
 
   useEffect(() => {
     const cleanups: (() => void)[] = [];
@@ -121,6 +128,12 @@ export default function App() {
         st.patchTab(tab.id, { zoom: 1 });
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
+        tab && !inInput && st.objSel
+      ) {
+        e.preventDefault();
+        deleteObject(tab.id, st.objSel.src, st.objSel.id);
+      } else if (
+        (e.key === "Delete" || e.key === "Backspace") &&
         tab && !inInput && tab.selected.length > 0 &&
         (window.getSelection()?.isCollapsed ?? true)
       ) {
@@ -131,8 +144,19 @@ export default function App() {
       ) {
         e.preventDefault();
         st.setTool(st.tool === "note" ? "select" : "note");
+      } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "e" && tab && !inInput
+      ) {
+        e.preventDefault();
+        st.setTool(st.tool === "edit" ? "select" : "edit");
+      } else if (
+        !mod && !e.altKey && e.key.toLowerCase() === "r" && tab && !inInput
+      ) {
+        e.preventDefault();
+        st.setTool(st.tool === "erase" ? "select" : "erase");
       } else if (e.key === "Escape" && tab && !inInput) {
-        if (st.tool === "note") st.setTool("select");
+        if (st.objSel) st.setObjSel(null);
+        else if (st.tool !== "select") st.setTool("select");
         else if (st.search.open) st.setSearch({ open: false });
         else if (tab.selected.length) st.patchTab(tab.id, { selected: [] });
       }

@@ -29,6 +29,8 @@ const icons = {
   split: "M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3 M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3 M12 4v16",
   highlight: "M9 11l-6 6v3h3l6-6 M14 6l4 4 3.5-3.5a2.1 2.1 0 0 0 0-3L20 2a2.1 2.1 0 0 0-3 0z M9 11l4-4 4 4-4 4z",
   note: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+  editObj: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z",
+  erase: "M9 3H5a2 2 0 0 0-2 2v4 M15 3h4a2 2 0 0 1 2 2v4 M9 21H5a2 2 0 0 1-2-2v-4 M15 21h4a2 2 0 0 0 2-2v-4 M8 12h8",
   search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.35-4.35",
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z M12 1v2 M12 21v2 M4.22 4.22l1.42 1.42 M18.36 18.36l1.42 1.42 M1 12h2 M21 12h2 M4.22 19.78l1.42-1.42 M18.36 5.64l1.42-1.42",
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
@@ -83,6 +85,22 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
         onClick={() => st().setTool(tool === "note" ? "select" : "note")}
       >
         <I d={icons.note} />
+      </button>
+      <button
+        title="Edit objects (E)"
+        disabled={!has}
+        className={tool === "edit" ? "active" : ""}
+        onClick={() => st().setTool(tool === "edit" ? "select" : "edit")}
+      >
+        <I d={icons.editObj} />
+      </button>
+      <button
+        title="Delete area (R)"
+        disabled={!has}
+        className={tool === "erase" ? "active" : ""}
+        onClick={() => st().setTool(tool === "erase" ? "select" : "erase")}
+      >
+        <I d={icons.erase} />
       </button>
       <div className="spacer" />
       <button

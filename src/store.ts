@@ -1,6 +1,14 @@
 import { create } from "zustand";
-import type { Tab, Snapshot, Highlight, Note } from "./types";
+import type { Tab, Snapshot, Highlight, Note, ObjectEdit } from "./types";
 import { evictDoc } from "./pdf";
+import { evictObjects } from "./objects";
+
+export type Tool = "select" | "note" | "edit" | "erase";
+
+export interface ObjSel {
+  src: number;
+  id: number;
+}
 
 export interface SearchState {
   open: boolean;
@@ -16,7 +24,8 @@ interface AppState {
   search: SearchState;
   status: string;
   scrollTarget: { page: number; nonce: number } | null;
-  tool: "select" | "note";
+  tool: Tool;
+  objSel: ObjSel | null;
 
   addTab: (tab: Tab) => void;
   closeTab: (id: string) => void;
@@ -30,11 +39,17 @@ interface AppState {
   setSearch: (s: Partial<SearchState>) => void;
   setStatus: (s: string) => void;
   scrollTo: (page: number) => void;
-  setTool: (tool: "select" | "note") => void;
+  setTool: (tool: Tool) => void;
+  setObjSel: (sel: ObjSel | null) => void;
 }
 
 function snapshot(t: Tab): Snapshot {
-  return structuredClone({ pages: t.pages, highlights: t.highlights, notes: t.notes });
+  return structuredClone({
+    pages: t.pages,
+    highlights: t.highlights,
+    notes: t.notes,
+    edits: t.edits,
+  });
 }
 
 const initialTheme: "light" | "dark" =
@@ -50,6 +65,7 @@ export const useStore = create<AppState>((set, get) => ({
   status: "",
   scrollTarget: null,
   tool: "select",
+  objSel: null,
 
   addTab: (tab) =>
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
@@ -57,6 +73,7 @@ export const useStore = create<AppState>((set, get) => ({
   closeTab: (id) =>
     set((s) => {
       evictDoc(id);
+      evictObjects(id);
       const tabs = s.tabs.filter((t) => t.id !== id);
       let activeId = s.activeId;
       if (activeId === id) {
@@ -71,6 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
       activeId: id,
       search: { open: false, query: "", matches: [], current: 0 },
       tool: "select",
+      objSel: null,
     }),
 
   patchTab: (id, patch) =>
@@ -101,6 +119,7 @@ export const useStore = create<AppState>((set, get) => ({
           pages: prev.pages,
           highlights: prev.highlights,
           notes: prev.notes,
+          edits: prev.edits,
           past: t.past.slice(0, -1),
           future: [snapshot(t), ...t.future],
           dirty: true,
@@ -120,6 +139,7 @@ export const useStore = create<AppState>((set, get) => ({
           pages: next.pages,
           highlights: next.highlights,
           notes: next.notes,
+          edits: next.edits,
           past: [...t.past, snapshot(t)],
           future: t.future.slice(1),
           dirty: true,
@@ -130,25 +150,31 @@ export const useStore = create<AppState>((set, get) => ({
     })),
 
   markSaved: (id, newPath, newName) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) => {
-        if (t.id !== id) return t;
-        const n = t.pages.length;
-        return {
-          ...t,
-          path: newPath,
-          name: newName,
-          pages: Array.from({ length: n }, (_, i) => ({ src: i + 1, rotation: 0 })),
-          highlights: [] as Highlight[],
-          notes: [] as Note[],
-          past: [],
-          future: [],
-          dirty: false,
-          docVersion: t.docVersion + 1,
-          selected: [],
-        };
-      }),
-    })),
+    set((s) => {
+      evictObjects(id);
+      return {
+        objSel: null,
+        tabs: s.tabs.map((t) => {
+          if (t.id !== id) return t;
+          const n = t.pages.length;
+          return {
+            ...t,
+            path: newPath,
+            name: newName,
+            pages: Array.from({ length: n }, (_, i) => ({ src: i + 1, rotation: 0 })),
+            highlights: [] as Highlight[],
+            notes: [] as Note[],
+            edits: [] as ObjectEdit[],
+            previewPath: null,
+            past: [],
+            future: [],
+            dirty: false,
+            docVersion: t.docVersion + 1,
+            selected: [],
+          };
+        }),
+      };
+    }),
 
   setTheme: (theme) => {
     localStorage.setItem("theme", theme);
@@ -168,7 +194,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
   scrollTo: (page) =>
     set((s) => ({ scrollTarget: { page, nonce: (s.scrollTarget?.nonce ?? 0) + 1 } })),
-  setTool: (tool) => set({ tool }),
+  setTool: (tool) => set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null })),
+  setObjSel: (objSel) => set({ objSel }),
 }));
 
 export function useActiveTab(): Tab | null {

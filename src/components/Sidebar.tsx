@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore, useActiveTab } from "../store";
-import { getDoc, getPage, type DocEntry } from "../pdf";
+import { getDoc, getPage, docPath, type DocEntry } from "../pdf";
 import type { PageSpec } from "../types";
 import { movePage } from "../actions";
 import { report } from "../errors";
@@ -70,7 +70,7 @@ export default function Sidebar() {
     let on = true;
     setEntry(null);
     if (!tab) return;
-    getDoc(tab.id, tab.path, tab.docVersion)
+    getDoc(tab.id, docPath(tab), tab.docVersion)
       .then((e) => on && setEntry(e))
       .catch((e) => report("Load failed", e));
     return () => {

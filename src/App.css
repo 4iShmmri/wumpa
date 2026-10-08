@@ -614,3 +614,73 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ---------- Object editor ---------- */
+.obj-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+
+.obj-box {
+  position: absolute;
+  border: 1px solid transparent;
+  border-radius: 1px;
+}
+
+.viewer.edit-mode .obj-box:hover {
+  border-color: rgba(74, 158, 255, 0.65);
+}
+
+.obj-box.selected {
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.obj-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border: 1px solid #fff;
+  border-radius: 1px;
+  z-index: 5;
+}
+
+.erase-rect {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.obj-actions {
+  position: absolute;
+  z-index: 7;
+}
+
+.obj-actions button {
+  border: 1px solid var(--border);
+  background: var(--modal-bg);
+  color: var(--fg);
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.obj-actions button:hover {
+  background: var(--btn-hover);
+}
+
+.viewer.edit-mode .textLayer,
+.viewer.erase-mode .textLayer {
+  pointer-events: none;
+}
+
+.viewer.erase-mode {
+  cursor: crosshair;
+}

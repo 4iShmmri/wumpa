@@ -17,10 +17,29 @@ export interface Note {
   text: string;
 }
 
+export interface ObjDesc {
+  id: number;
+  kind: "text" | "image" | "form" | "path";
+  bbox: [number, number, number, number];
+}
+
+export interface ObjectEdit {
+  src: number;
+  id: number;
+  action: "delete" | "translate" | "scale";
+  dx?: number;
+  dy?: number;
+  sx?: number;
+  sy?: number;
+  ax?: number;
+  ay?: number;
+}
+
 export interface Snapshot {
   pages: PageSpec[];
   highlights: Highlight[];
   notes: Note[];
+  edits: ObjectEdit[];
 }
 
 export interface Tab {
@@ -30,6 +49,8 @@ export interface Tab {
   pages: PageSpec[];
   highlights: Highlight[];
   notes: Note[];
+  edits: ObjectEdit[];
+  previewPath: string | null;
   past: Snapshot[];
   future: Snapshot[];
   zoom: number;

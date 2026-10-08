@@ -33,6 +33,9 @@ export interface ExistingAnnot {
 
 const cache = new Map<string, DocEntry>();
 
+export const docPath = (t: { path: string; previewPath: string | null }) =>
+  t.previewPath ?? t.path;
+
 export async function getDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
   const existing = cache.get(tabId);
   if (existing && existing.version === version) return existing;

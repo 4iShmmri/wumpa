@@ -1,10 +1,10 @@
 import { useStore, getActiveTab } from "./store";
-import type { Tab, Note } from "./types";
+import type { Tab, Note, ObjectEdit } from "./types";
 import {
   pickPdfs, pickSavePath, pickDirectory, saveDocument, mergeDocuments,
   splitDocument, baseName, dirName, confirmDialog,
 } from "./backend";
-import { getDoc, getPage, getPageText } from "./pdf";
+import { getDoc, getPage, getPageText, docPath } from "./pdf";
 import { report } from "./errors";
 
 const S = useStore.getState;
@@ -22,7 +22,7 @@ export async function openPaths(paths: string[]) {
       const tab: Tab = {
         id, path, name: baseName(path),
         pages: Array.from({ length: entry.numPages }, (_, i) => ({ src: i + 1, rotation: 0 })),
-        highlights: [], notes: [], past: [], future: [],
+        highlights: [], notes: [], edits: [], previewPath: null, past: [], future: [],
         zoom: 1, currentPage: 1, selected: [],
         dirty: false, docVersion: 0,
       };
@@ -51,6 +51,7 @@ export async function saveActive(saveAs: boolean) {
     await saveDocument(
       tab.path, outPath, tab.pages, tab.highlights,
       tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
+      tab.edits,
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
     S().setStatus(`Saved ${baseName(outPath)}`);
@@ -97,7 +98,7 @@ export async function extractSelected() {
   if (!out) return;
   const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
   try {
-    await saveDocument(tab.path, outPath, specs, [], []);
+    await saveDocument(tab.path, outPath, specs, [], [], tab.edits);
     S().setStatus(`Extracted ${specs.length} page(s)`);
     await openPaths([outPath]);
   } catch (e) {
@@ -175,6 +176,33 @@ export function deleteNote(tabId: string, id: string) {
   S().mutateDoc(tabId, (t) => ({ notes: t.notes.filter((n) => n.id !== id) }));
 }
 
+export function addObjectEdits(tabId: string, newEdits: ObjectEdit[]) {
+  S().mutateDoc(tabId, (t) => {
+    const edits = [...t.edits];
+    for (const e of newEdits) {
+      const last = edits[edits.length - 1];
+      if (
+        e.action === "translate" && last && last.action === "translate" &&
+        last.id === e.id && last.src === e.src
+      ) {
+        edits[edits.length - 1] = {
+          ...last,
+          dx: (last.dx ?? 0) + (e.dx ?? 0),
+          dy: (last.dy ?? 0) + (e.dy ?? 0),
+        };
+      } else {
+        edits.push(e);
+      }
+    }
+    return { edits };
+  });
+}
+
+export function deleteObject(tabId: string, src: number, id: number) {
+  addObjectEdits(tabId, [{ src, id, action: "delete" }]);
+  S().setObjSel(null);
+}
+
 export const HIGHLIGHT_COLOR: [number, number, number] = [1.0, 0.82, 0.0];
 
 export async function highlightSelection() {
@@ -185,7 +213,7 @@ export async function highlightSelection() {
     S().setStatus("Select some text first, then click Highlight");
     return;
   }
-  const entry = await getDoc(tab.id, tab.path, tab.docVersion);
+  const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
   const pageEls = Array.from(
     document.querySelectorAll<HTMLElement>("[data-pageindex]"),
   ).map((el) => ({ el, index: Number(el.dataset.pageindex), box: el.getBoundingClientRect() }));
@@ -237,7 +265,7 @@ export async function runSearch(query: string) {
   const q = query.trim().toLowerCase();
   if (!tab || q.length < 2) return;
   try {
-    const entry = await getDoc(tab.id, tab.path, tab.docVersion);
+    const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
     const matches: number[] = [];
     for (let i = 0; i < tab.pages.length; i++) {
       const text = (await getPageText(entry, tab.pages[i].src)).toLowerCase();

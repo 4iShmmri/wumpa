@@ -1,5 +1,7 @@
+mod editor;
 mod pdf_ops;
 
+use editor::ObjectEdit;
 use pdf_ops::{Highlight, Note, PageSpec};
 use serde::Deserialize;
 use std::sync::Mutex;
@@ -21,11 +23,42 @@ async fn save_document(
     pages: Vec<PageSpec>,
     highlights: Vec<Highlight>,
     notes: Vec<Note>,
+    edits: Vec<ObjectEdit>,
 ) -> Result<(), String> {
     let mut doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
+    editor::apply_edits(&mut doc, &edits)?;
     pdf_ops::rebuild(&mut doc, &pages, &highlights, &notes)?;
     doc.save(&out_path).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+async fn list_page_objects(src_path: String, page: u32) -> Result<Vec<editor::ObjDesc>, String> {
+    let doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
+    let pages = doc.get_pages();
+    let pid = *pages
+        .get(&page)
+        .ok_or_else(|| format!("page {page} not found"))?;
+    Ok(editor::enumerate(&doc, pid)?.iter().map(editor::ObjDesc::from).collect())
+}
+
+fn preview_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("pdf-editor-preview")
+}
+
+#[tauri::command]
+async fn apply_edits_preview(src_path: String, edits: Vec<ObjectEdit>) -> Result<String, String> {
+    let mut doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
+    editor::apply_edits(&mut doc, &edits)?;
+    let dir = preview_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = dir.join(format!("{}-{}.pdf", std::process::id(), nanos));
+    doc.save(&path).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -81,6 +114,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(PendingFiles(Mutex::new(Vec::new())))
         .setup(|app| {
+            let _ = std::fs::remove_dir_all(preview_dir());
             let args: Vec<String> = std::env::args().skip(1).filter(|a| is_pdf_path(a)).collect();
             if !args.is_empty() {
                 if let Ok(mut v) = app.state::<PendingFiles>().0.lock() {
@@ -101,7 +135,9 @@ pub fn run() {
             merge_documents,
             split_document,
             take_pending_files,
-            exit_app
+            exit_app,
+            list_page_objects,
+            apply_edits_preview
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
