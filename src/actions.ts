@@ -659,3 +659,28 @@ export function insertTextAtCenter(text: string, size: number) {
     }
   })();
 }
+
+let cmpSeq = 0;
+
+export async function compareActive() {
+  const tab = getActiveTab();
+  if (!tab) return;
+  try {
+    const paths = await pickPdfs(false);
+    if (!paths || !paths.length) return;
+    const rightPath = paths[0];
+    const seq = ++cmpSeq;
+    S().openCompare({
+      leftKey: `__cmpL__${seq}`,
+      leftPath: docPath(tab),
+      leftVersion: 0,
+      leftName: tab.name,
+      rightKey: `__cmpR__${seq}`,
+      rightPath,
+      rightVersion: 0,
+      rightName: baseName(rightPath),
+    });
+  } catch (e) {
+    report(t("stCmpFailed"), e);
+  }
+}

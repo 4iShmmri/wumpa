@@ -4,7 +4,7 @@ import type { ShapeKind } from "../types";
 import {
   openFileDialog, saveActive, mergeFiles, extractSelected,
   rotateSelection, deleteSelection, highlightSelection, printActive,
-  insertImageFromFile,
+  insertImageFromFile, compareActive,
 } from "../actions";
 import { useT } from "../i18n";
 import type { LangPref } from "../store";
@@ -122,6 +122,7 @@ const icons = {
   table: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M3 10h18 M3 15h18 M9 3v18 M15 3v18",
   insertMenu: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M12 8v8 M8 12h8",
   organize: "M3 3h8v8H3z M13 3h8v8h-8z M3 13h8v8H3z M13 13h8v8h-8z",
+  compare: "M12 3v18 M5 6H3v11a2 2 0 0 0 2 2h4 M5 6h4V4 M19 18h2V7a2 2 0 0 0-2-2h-4 M19 18h-4v2",
 };
 
 type MenuItem =
@@ -235,6 +236,8 @@ export default function Toolbar({ onSplit }: { onSplit: () => void }) {
     { icon: icons.merge, label: t("wMerge"), run: () => void mergeFiles() },
     { icon: icons.split, label: t("miSplit"), disabled: !has, run: onSplit },
     { icon: icons.compress, label: t("tipCompress"), disabled: !has, run: () => st().setUtilModal("compress") },
+    { sep: true },
+    { icon: icons.compare, label: t("cmpMenu"), disabled: !has, run: () => void compareActive() },
   ];
 
   return (

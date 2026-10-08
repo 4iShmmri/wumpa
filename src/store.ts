@@ -18,6 +18,17 @@ export interface SearchState {
   current: number; // index into matches
 }
 
+export interface CompareState {
+  leftKey: string;
+  leftPath: string;
+  leftVersion: number;
+  leftName: string;
+  rightKey: string;
+  rightPath: string;
+  rightVersion: number;
+  rightName: string;
+}
+
 interface AppState {
   tabs: Tab[];
   activeId: string | null;
@@ -38,6 +49,7 @@ interface AppState {
   drawWidth: number;
   lang: LangPref;
   effectiveLang: "en" | "ar";
+  compare: CompareState | null;
 
   addTab: (tab: Tab) => void;
   setLang: (lang: LangPref) => void;
@@ -63,6 +75,8 @@ interface AppState {
   setDrawKind: (k: ShapeKind) => void;
   setDrawColor: (c: [number, number, number]) => void;
   setDrawWidth: (w: number) => void;
+  openCompare: (c: CompareState) => void;
+  closeCompare: () => void;
 }
 
 function snapshot(t: Tab): Snapshot {
@@ -117,6 +131,7 @@ export const useStore = create<AppState>((set, get) => ({
   drawWidth: 2.5,
   lang: initialLang,
   effectiveLang: computeEffective(initialLang, [], null),
+  compare: null,
 
   setLang: (lang) => {
     try {
@@ -293,6 +308,15 @@ export const useStore = create<AppState>((set, get) => ({
   setDrawKind: (drawKind) => set({ drawKind }),
   setDrawColor: (drawColor) => set({ drawColor }),
   setDrawWidth: (drawWidth) => set({ drawWidth }),
+  openCompare: (compare) => set({ compare }),
+  closeCompare: () =>
+    set((s) => {
+      if (s.compare) {
+        evictDoc(s.compare.leftKey);
+        evictDoc(s.compare.rightKey);
+      }
+      return { compare: null };
+    }),
 }));
 
 function applyLangAttrs(l: "en" | "ar") {

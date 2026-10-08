@@ -8,6 +8,7 @@ import SearchBar from "./components/SearchBar";
 import StatusBar from "./components/StatusBar";
 import SignatureModal from "./components/SignatureModal";
 import UtilModals from "./components/UtilModals";
+import CompareView from "./components/CompareView";
 import { useStore } from "./store";
 import {
   openPaths, openFileDialog, saveActive, closeTabSafe,
@@ -236,6 +237,7 @@ export default function App() {
       <StatusBar />
       <SignatureModal />
       <UtilModals />
+      <CompareView />
       {splitOpen && <SplitModal onClose={() => setSplitOpen(false)} />}
     </div>
   );
