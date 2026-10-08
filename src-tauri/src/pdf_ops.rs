@@ -24,6 +24,18 @@ pub struct Note {
     pub text: String,
 }
 
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Shape {
+    pub src: u32,
+    pub kind: String,
+    pub rect: [f64; 4],
+    pub strokes: Vec<Vec<[f64; 2]>>,
+    pub color: [f32; 3],
+    pub width: f64,
+    pub opacity: f32,
+}
+
 type R<T> = Result<T, String>;
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -230,6 +242,166 @@ fn add_note(doc: &mut Document, page_id: ObjectId, note: &Note) -> R<()> {
     append_annot(doc, page_id, annot_id)
 }
 
+fn add_shape(doc: &mut Document, page_id: ObjectId, s: &Shape) -> R<()> {
+    let [x1, y1, x2, y2] = s.rect;
+    let (lx, hx) = (x1.min(x2), x1.max(x2));
+    let (ly, hy) = (y1.min(y2), y1.max(y2));
+    let w = s.width;
+    let bbox = [lx - w, ly - w, hx + w, hy + w];
+    let (r, g, b) = (s.color[0], s.color[1], s.color[2]);
+
+    let mut ops = vec![
+        Operation::new("gs", vec!["G0".into()]),
+        Operation::new("RG", vec![r.into(), g.into(), b.into()]),
+        Operation::new("w", vec![w.into()]),
+        Operation::new("J", vec![1.into()]),
+        Operation::new("j", vec![1.into()]),
+    ];
+
+    let subtype;
+    let mut extra: Vec<(&str, Object)> = Vec::new();
+
+    match s.kind.as_str() {
+        "ink" => {
+            subtype = "Ink";
+            let mut list: Vec<Object> = Vec::new();
+            for stroke in &s.strokes {
+                if stroke.len() < 2 {
+                    continue;
+                }
+                ops.push(Operation::new("m", vec![stroke[0][0].into(), stroke[0][1].into()]));
+                for p in &stroke[1..] {
+                    ops.push(Operation::new("l", vec![p[0].into(), p[1].into()]));
+                }
+                ops.push(Operation::new("S", vec![]));
+                let flat: Vec<Object> = stroke
+                    .iter()
+                    .flat_map(|p| [p[0].into(), p[1].into()])
+                    .collect();
+                list.push(Object::Array(flat));
+            }
+            extra.push(("InkList", Object::Array(list)));
+        }
+        "rect" | "ellipse" => {
+            let ix = lx + w / 2.0;
+            let iy = ly + w / 2.0;
+            let iw = (hx - lx - w).max(0.0);
+            let ih = (hy - ly - w).max(0.0);
+            if s.kind == "rect" {
+                subtype = "Square";
+                ops.push(Operation::new(
+                    "re",
+                    vec![ix.into(), iy.into(), iw.into(), ih.into()],
+                ));
+            } else {
+                subtype = "Circle";
+                let (cx, cy) = (ix + iw / 2.0, iy + ih / 2.0);
+                let (rx, ry) = (iw / 2.0, ih / 2.0);
+                let k = 0.5523;
+                ops.push(Operation::new("m", vec![(cx + rx).into(), cy.into()]));
+                for [c1x, c1y, c2x, c2y, ex, ey] in [
+                    [cx + rx, cy + k * ry, cx + k * rx, cy + ry, cx, cy + ry],
+                    [cx - k * rx, cy + ry, cx - rx, cy + k * ry, cx - rx, cy],
+                    [cx - rx, cy - k * ry, cx - k * rx, cy - ry, cx, cy - ry],
+                    [cx + k * rx, cy - ry, cx + rx, cy - k * ry, cx + rx, cy],
+                ] {
+                    ops.push(Operation::new(
+                        "c",
+                        vec![c1x.into(), c1y.into(), c2x.into(), c2y.into(), ex.into(), ey.into()],
+                    ));
+                }
+            }
+            ops.push(Operation::new("S", vec![]));
+        }
+        "line" | "arrow" => {
+            subtype = "Line";
+            let pts = s
+                .strokes
+                .first()
+                .filter(|p| p.len() >= 2)
+                .ok_or_else(|| format!("{} shape needs 2 points", s.kind))?;
+            let (p1, p2) = (pts[0], pts[1]);
+            extra.push((
+                "L",
+                Object::Array(vec![p1[0].into(), p1[1].into(), p2[0].into(), p2[1].into()]),
+            ));
+            if s.kind == "line" {
+                ops.push(Operation::new("m", vec![p1[0].into(), p1[1].into()]));
+                ops.push(Operation::new("l", vec![p2[0].into(), p2[1].into()]));
+                ops.push(Operation::new("S", vec![]));
+            } else {
+                extra.push((
+                    "LE",
+                    Object::Array(vec![
+                        Object::Name(b"None".to_vec()),
+                        Object::Name(b"ClosedArrow".to_vec()),
+                    ]),
+                ));
+                let (dx, dy) = (p2[0] - p1[0], p2[1] - p1[1]);
+                let len = (dx * dx + dy * dy).sqrt();
+                if len > 1e-6 {
+                    let head = (4.5 * w).max(9.0);
+                    let (ux, uy) = (dx / len, dy / len);
+                    let (ex, ey) = (p2[0] - ux * head, p2[1] - uy * head);
+                    ops.push(Operation::new("m", vec![p1[0].into(), p1[1].into()]));
+                    ops.push(Operation::new("l", vec![ex.into(), ey.into()]));
+                    ops.push(Operation::new("S", vec![]));
+                    let (nx, ny) = (-uy, ux);
+                    let hb = head / 2.0;
+                    ops.push(Operation::new("rg", vec![r.into(), g.into(), b.into()]));
+                    ops.push(Operation::new("m", vec![p2[0].into(), p2[1].into()]));
+                    ops.push(Operation::new(
+                        "l",
+                        vec![(ex + nx * hb).into(), (ey + ny * hb).into()],
+                    ));
+                    ops.push(Operation::new(
+                        "l",
+                        vec![(ex - nx * hb).into(), (ey - ny * hb).into()],
+                    ));
+                    ops.push(Operation::new("f", vec![]));
+                }
+            }
+        }
+        other => return Err(format!("unknown shape kind {other}")),
+    }
+
+    let content = Content { operations: ops };
+    let ap = Stream::new(
+        dictionary! {
+            "Type" => "XObject",
+            "Subtype" => "Form",
+            "BBox" => bbox.iter().map(|&v| v.into()).collect::<Vec<Object>>(),
+            "Resources" => dictionary! {
+                "ExtGState" => dictionary! {
+                    "G0" => dictionary! {
+                        "Type" => "ExtGState",
+                        "CA" => Object::Real(s.opacity),
+                        "ca" => Object::Real(s.opacity),
+                    },
+                },
+            },
+        },
+        content.encode().map_err(err)?,
+    );
+    let ap_id = doc.add_object(ap);
+
+    let mut annot = dictionary! {
+        "Type" => "Annot",
+        "Subtype" => subtype,
+        "Rect" => bbox.iter().map(|&v| v.into()).collect::<Vec<Object>>(),
+        "C" => vec![Object::Real(r), Object::Real(g), Object::Real(b)],
+        "CA" => Object::Real(s.opacity),
+        "F" => 4,
+        "BS" => dictionary! { "W" => s.width },
+        "AP" => dictionary! { "N" => ap_id },
+    };
+    for (k, v) in extra {
+        annot.set(k, v);
+    }
+    let annot_id = doc.add_object(annot);
+    append_annot(doc, page_id, annot_id)
+}
+
 /// Rebuild the document's page tree: keep only the pages in `specs`, in that
 /// order, applying per-page rotation deltas, then attach annotations.
 pub fn rebuild(
@@ -237,6 +409,7 @@ pub fn rebuild(
     specs: &[PageSpec],
     highlights: &[Highlight],
     notes: &[Note],
+    shapes: &[Shape],
 ) -> R<()> {
     let page_map = doc.get_pages();
     let pages_root = root_pages_id(doc)?;
@@ -274,6 +447,14 @@ pub fn rebuild(
         if let Some(&oid) = page_map.get(&n.src) {
             if kids.contains(&oid) {
                 add_note(doc, oid, n)?;
+            }
+        }
+    }
+
+    for s in shapes {
+        if let Some(&oid) = page_map.get(&s.src) {
+            if kids.contains(&oid) {
+                add_shape(doc, oid, s)?;
             }
         }
     }
@@ -456,6 +637,7 @@ mod tests {
             ],
             &[],
             &[],
+            &[],
         )
         .unwrap();
         let out = roundtrip(&mut doc);
@@ -500,7 +682,7 @@ mod tests {
             y: 750.0,
             text: "hello note".into(),
         };
-        rebuild(&mut doc, &specs, &[hl], &[note]).unwrap();
+        rebuild(&mut doc, &specs, &[hl], &[note], &[]).unwrap();
         let out = roundtrip(&mut doc);
         let pages = out.get_pages();
         let page = out.get_object(pages[&1]).unwrap().as_dict().unwrap();
@@ -511,5 +693,88 @@ mod tests {
             let d = out.get_object(id).unwrap().as_dict().unwrap();
             assert!(d.get(b"AP").is_ok(), "annotation missing /AP");
         }
+    }
+
+    fn shape(kind: &str, strokes: Vec<Vec<[f64; 2]>>) -> Shape {
+        Shape {
+            src: 1,
+            kind: kind.into(),
+            rect: [100.0, 100.0, 200.0, 160.0],
+            strokes,
+            color: [0.8, 0.1, 0.1],
+            width: 2.0,
+            opacity: 0.9,
+        }
+    }
+
+    fn page_annots(out: &Document) -> Vec<Dictionary> {
+        let pages = out.get_pages();
+        let page = out.get_object(pages[&1]).unwrap().as_dict().unwrap();
+        page.get(b"Annots")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| {
+                out.get_object(a.as_reference().unwrap())
+                    .unwrap()
+                    .as_dict()
+                    .unwrap()
+                    .clone()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn shapes_all_kinds_have_appearance() {
+        let mut doc = sample_doc(1);
+        let line = vec![vec![[100.0, 100.0], [200.0, 160.0]]];
+        let shapes = vec![
+            shape("ink", vec![vec![[100.0, 100.0], [150.0, 160.0], [200.0, 100.0]]]),
+            shape("rect", vec![]),
+            shape("ellipse", vec![]),
+            shape("line", line.clone()),
+            shape("arrow", line),
+        ];
+        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &shapes).unwrap();
+        let out = roundtrip(&mut doc);
+        let annots = page_annots(&out);
+        assert_eq!(annots.len(), 5);
+        let subtypes: Vec<&[u8]> = annots
+            .iter()
+            .map(|d| d.get(b"Subtype").unwrap().as_name().unwrap())
+            .collect();
+        assert_eq!(subtypes, vec![&b"Ink"[..], b"Square", b"Circle", b"Line", b"Line"]);
+        for d in &annots {
+            assert!(d.get(b"AP").is_ok(), "shape missing /AP");
+        }
+    }
+
+    #[test]
+    fn ink_strokes_in_inklist() {
+        let mut doc = sample_doc(1);
+        let s = shape(
+            "ink",
+            vec![
+                vec![[100.0, 100.0], [150.0, 150.0]],
+                vec![[120.0, 100.0], [170.0, 150.0]],
+            ],
+        );
+        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &[s]).unwrap();
+        let out = roundtrip(&mut doc);
+        let annots = page_annots(&out);
+        let ink = annots[0].get(b"InkList").unwrap().as_array().unwrap();
+        assert_eq!(ink.len(), 2);
+    }
+
+    #[test]
+    fn arrow_has_closed_arrow_ending() {
+        let mut doc = sample_doc(1);
+        let s = shape("arrow", vec![vec![[100.0, 100.0], [200.0, 160.0]]]);
+        rebuild(&mut doc, &[PageSpec { src: 1, rotation: 0 }], &[], &[], &[s]).unwrap();
+        let out = roundtrip(&mut doc);
+        let annots = page_annots(&out);
+        let le = annots[0].get(b"LE").unwrap().as_array().unwrap();
+        assert_eq!(le[1].as_name().unwrap(), b"ClosedArrow");
     }
 }

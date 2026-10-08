@@ -9,6 +9,7 @@ import {
 } from "../actions";
 import { addTextStamp, addSignatureStamp, loadImage } from "../stamps";
 import StampLayer from "./StampLayer";
+import TextEditPopover from "./TextEditPopover";
 import { getObjects, adjustedBox } from "../objects";
 import { confirmDialog } from "../backend";
 import { report } from "../errors";
@@ -59,7 +60,7 @@ interface ObjBox extends CssBox {
 }
 
 function ObjectLayer({
-  tabId, tabPath, spec, viewport, edits, tool,
+  tabId, tabPath, spec, viewport, edits, tool, entry,
 }: {
   tabId: string;
   tabPath: string;
@@ -67,12 +68,14 @@ function ObjectLayer({
   viewport: PageViewport;
   edits: ObjectEdit[];
   tool: "edit" | "erase";
+  entry: DocEntry;
 }) {
   const [objs, setObjs] = useState<ObjDesc[] | null>(null);
   const objSel = useStore((s) => s.objSel);
   const layerRef = useRef<HTMLDivElement>(null);
   const [ghost, setGhost] = useState<CssBox | null>(null);
   const [eraseRect, setEraseRect] = useState<CssBox | null>(null);
+  const [textEdit, setTextEdit] = useState<{ id: number; pdf: [number, number, number, number] } | null>(null);
 
   useEffect(() => {
     let on = true;
@@ -127,6 +130,7 @@ function ObjectLayer({
   const startMove = (e: React.PointerEvent, box: ObjBox) => {
     if (tool !== "edit" || e.button !== 0) return;
     e.stopPropagation();
+    setTextEdit((te) => (te && te.id !== box.o.id ? null : te));
     useStore.getState().setObjSel({ src: spec.src, id: box.o.id });
     const sx = e.clientX;
     const sy = e.clientY;
@@ -239,6 +243,12 @@ function ObjectLayer({
             className={"obj-box" + (sel?.o.id === b.o.id ? " selected" : "")}
             style={{ left: b.l, top: b.t, width: b.w, height: b.h, pointerEvents: "auto" }}
             onPointerDown={(e) => startMove(e, b)}
+            onDoubleClick={(e) => {
+              if (b.o.kind !== "text") return;
+              e.stopPropagation();
+              useStore.getState().setObjSel({ src: spec.src, id: b.o.id });
+              setTextEdit({ id: b.o.id, pdf: b.pdf });
+            }}
           />
         ))}
       {tool === "edit" && sel && (sel.o.kind === "image" || sel.o.kind === "form") &&
@@ -260,9 +270,30 @@ function ObjectLayer({
           className="obj-actions"
           style={{ left: sel.l, top: Math.max(0, sel.t - 30), pointerEvents: "auto" }}
         >
+          {sel.o.kind === "text" && (
+            <button onClick={() => setTextEdit({ id: sel.o.id, pdf: sel.pdf })}>Edit text</button>
+          )}
           <button onClick={() => deleteObject(tabId, spec.src, sel.o.id)}>Delete</button>
         </div>
       )}
+      {tool === "edit" && textEdit && (() => {
+        const [ax, ay] = viewport.convertToViewportPoint(textEdit.pdf[0], textEdit.pdf[1]) as [number, number];
+        const [bx, by] = viewport.convertToViewportPoint(textEdit.pdf[2], textEdit.pdf[3]) as [number, number];
+        const l = Math.max(4, Math.min(Math.min(ax, bx), viewport.width - 292));
+        const t = Math.max(4, Math.min(Math.max(ay, by) + 6, viewport.height - 200));
+        return (
+          <TextEditPopover
+            entry={entry}
+            tabId={tabId}
+            src={spec.src}
+            objId={textEdit.id}
+            bbox={textEdit.pdf}
+            left={l}
+            top={t}
+            onDone={() => setTextEdit(null)}
+          />
+        );
+      })()}
       {ghost && (
         <div
           className="erase-rect"
@@ -597,6 +628,7 @@ function PdfPage({
           viewport={viewport}
           edits={edits}
           tool={tool}
+          entry={entry}
         />
       )}
       {renderPopover()}

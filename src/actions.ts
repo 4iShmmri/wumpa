@@ -1,12 +1,12 @@
 import { useStore, getActiveTab } from "./store";
-import type { Tab, Note, ObjectEdit } from "./types";
+import type { Tab, Note, ObjectEdit, StampItem } from "./types";
 import {
   pickPdfs, pickSavePath, pickDirectory, saveDocument, mergeDocuments,
   splitDocument, baseName, dirName, confirmDialog,
 } from "./backend";
 import { getDoc, getPage, getPageText, docPath } from "./pdf";
 import { report } from "./errors";
-import { rasterizeStamps } from "./stamps";
+import { measureText, rasterizeStamps } from "./stamps";
 
 const S = useStore.getState;
 
@@ -203,6 +203,33 @@ export function addObjectEdits(tabId: string, newEdits: ObjectEdit[]) {
 
 export function deleteObject(tabId: string, src: number, id: number) {
   addObjectEdits(tabId, [{ src, id, action: "delete" }]);
+  S().setObjSel(null);
+}
+
+export function replaceTextObject(
+  tabId: string,
+  src: number,
+  id: number,
+  bbox: [number, number, number, number],
+  text: string,
+  size: number,
+  color: string,
+) {
+  S().mutateDoc(tabId, (t) => {
+    const edits: ObjectEdit[] = [...t.edits, { src, id, action: "delete" }];
+    if (!text.trim()) return { edits };
+    const { w, h } = measureText(text, size);
+    const stamp: StampItem = {
+      id: crypto.randomUUID(),
+      src,
+      rect: [bbox[0], bbox[3] - h, bbox[0] + Math.max(w, 80), bbox[3]],
+      kind: "text",
+      text,
+      size,
+      color,
+    };
+    return { edits, stamps: [...t.stamps, stamp] };
+  });
   S().setObjSel(null);
 }
 

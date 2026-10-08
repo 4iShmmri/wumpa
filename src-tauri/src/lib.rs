@@ -3,7 +3,7 @@ mod pdf_ops;
 mod stamps;
 
 use editor::ObjectEdit;
-use pdf_ops::{Highlight, Note, PageSpec};
+use pdf_ops::{Highlight, Note, PageSpec, Shape};
 use stamps::Stamp;
 use serde::Deserialize;
 use std::sync::Mutex;
@@ -27,11 +27,12 @@ async fn save_document(
     notes: Vec<Note>,
     edits: Vec<ObjectEdit>,
     stamps: Vec<Stamp>,
+    shapes: Vec<Shape>,
 ) -> Result<(), String> {
     let mut doc = lopdf::Document::load(&src_path).map_err(|e| e.to_string())?;
     editor::apply_edits(&mut doc, &edits)?;
     stamps::apply_stamps(&mut doc, &stamps)?;
-    pdf_ops::rebuild(&mut doc, &pages, &highlights, &notes)?;
+    pdf_ops::rebuild(&mut doc, &pages, &highlights, &notes, &shapes)?;
     doc.save(&out_path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -87,7 +88,7 @@ async fn split_document(src_path: String, parts: Vec<SplitPart>) -> Result<(), S
             .iter()
             .map(|&p| PageSpec { src: p, rotation: 0 })
             .collect();
-        pdf_ops::rebuild(&mut doc, &specs, &[], &[])?;
+        pdf_ops::rebuild(&mut doc, &specs, &[], &[], &[])?;
         doc.save(&part.out_path).map_err(|e| e.to_string())?;
     }
     Ok(())

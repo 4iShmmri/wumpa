@@ -126,6 +126,59 @@ function normQuads(qp: unknown, fallback: [number, number, number, number]) {
   return quads.length ? quads : [fallback];
 }
 
+export async function getTextInRect(
+  entry: DocEntry,
+  src: number,
+  bbox: [number, number, number, number],
+): Promise<{ text: string; size: number }> {
+  const page = await getPage(entry, src);
+  const content = await page.getTextContent();
+  const grow = 2;
+  const [bx1, by1, bx2, by2] = [bbox[0] - grow, bbox[1] - grow, bbox[2] + grow, bbox[3] + grow];
+
+  interface It { str: string; tx: number; ty: number; w: number; h: number; fs: number }
+  const kept: It[] = [];
+  for (const it of content.items) {
+    if (!("str" in it) || !it.str) continue;
+    const tx = it.transform[4];
+    const ty = it.transform[5];
+    const w = it.width || 0;
+    const h = it.height || Math.abs(it.transform[3]) || 0;
+    const cx = tx + w / 2;
+    const cy = ty + h / 2;
+    if (cx < bx1 || cx > bx2 || cy < by1 || cy > by2) continue;
+    kept.push({ str: it.str, tx, ty, w, h, fs: Math.abs(it.transform[3]) });
+  }
+  if (!kept.length) return { text: "", size: 0 };
+
+  const lines: It[][] = [];
+  for (const k of [...kept].sort((a, b) => b.ty - a.ty || a.tx - b.tx)) {
+    const line = lines.find((l) => Math.abs(l[0].ty - k.ty) < 0.45 * Math.max(k.h, l[0].h, 1));
+    if (line) line.push(k);
+    else lines.push([k]);
+  }
+
+  const fss = kept.map((k) => k.fs).filter((v) => v > 0).sort((a, b) => a - b);
+  const median = fss.length ? fss[Math.floor(fss.length / 2)] : 0;
+  const fallback = (bbox[3] - bbox[1]) / Math.max(1, lines.length) / 1.35;
+  const size = Math.max(6, Math.min(120, median || fallback));
+
+  const text = lines
+    .map((l) => {
+      l.sort((a, b) => a.tx - b.tx);
+      let out = "";
+      let prevEnd: number | null = null;
+      for (const k of l) {
+        if (prevEnd != null && k.tx - prevEnd > 0.3 * size && out && !out.endsWith(" ")) out += " ";
+        out += k.str;
+        prevEnd = k.tx + k.w;
+      }
+      return out;
+    })
+    .join("\n");
+  return { text, size };
+}
+
 export async function getAnnots(entry: DocEntry, src: number): Promise<ExistingAnnot[]> {
   const cached = entry.annotsCache.get(src);
   if (cached) return cached;

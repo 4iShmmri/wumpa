@@ -846,3 +846,49 @@ body {
   max-width: 420px;
   max-height: 140px;
 }
+
+/* ---------- Inline text edit popover ---------- */
+.text-edit-popover {
+  width: 280px;
+}
+
+.text-edit-popover .te-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.text-edit-popover .te-tools button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  padding: 2px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.text-edit-popover .te-tools button:hover {
+  background: var(--btn-hover);
+}
+
+.text-edit-popover .te-tools .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  padding: 0;
+  border: 2px solid transparent;
+}
+
+.text-edit-popover .te-tools .dot.on {
+  border-color: var(--accent);
+}
+
+.text-edit-popover .te-size {
+  color: var(--fg-dim);
+  font-size: 11px;
+  min-width: 32px;
+  text-align: center;
+}
