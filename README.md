@@ -1,6 +1,6 @@
-# PDF Editor
+# Wumpa
 
-A fast, free, open-source PDF editor for macOS, Windows, and Linux.
+Wumpa is a fast, free, open-source PDF editor for macOS, Windows, and Linux.
 Built with **Rust** (Tauri v2 + lopdf) and **PDF.js**. Works fully offline — your files never leave your machine.
 
 ## Features
