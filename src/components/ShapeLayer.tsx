@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { trackPointer } from "../pointer";
 import type { PageViewport } from "pdfjs-dist";
 import { useStore } from "../store";
 import { useT } from "../i18n";
@@ -8,16 +9,6 @@ import { addShape, moveShape, deleteShape } from "../actions";
 type Pt = [number, number];
 
 const css = (c: [number, number, number]) => `rgb(${c.map((v) => Math.round(v * 255)).join(",")})`;
-
-function track(onMove: (ev: PointerEvent) => void, onUp: (ev: PointerEvent) => void) {
-  const up = (ev: PointerEvent) => {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", up);
-    onUp(ev);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", up);
-}
 
 function headPts(a: Pt, b: Pt, len: number): { base: Pt; tri: Pt[] } {
   const dx = b[0] - a[0];
@@ -34,7 +25,13 @@ function headPts(a: Pt, b: Pt, len: number): { base: Pt; tri: Pt[] } {
   };
 }
 
-function ShapeSvg({ kind, strokes, color, w, headLen }: {
+function ShapeSvg({
+  kind,
+  strokes,
+  color,
+  w,
+  headLen,
+}: {
   kind: ShapeKind;
   strokes: Pt[][];
   color: string;
@@ -78,7 +75,14 @@ function ShapeSvg({ kind, strokes, color, w, headLen }: {
   return <ellipse {...common} cx={x + bw / 2} cy={y + bh / 2} rx={bw / 2} ry={bh / 2} />;
 }
 
-export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active }: {
+export default function ShapeLayer({
+  tabId,
+  src,
+  shapes,
+  viewport,
+  zoom,
+  active,
+}: {
   tabId: string;
   src: number;
   shapes: ShapeItem[];
@@ -124,8 +128,10 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
       .filter((sh) => {
         const g = Math.max(6 / Math.max(zoom, 0.01), sh.width);
         return (
-          pStart[0] >= sh.rect[0] - g && pStart[0] <= sh.rect[2] + g &&
-          pStart[1] >= sh.rect[1] - g && pStart[1] <= sh.rect[3] + g
+          pStart[0] >= sh.rect[0] - g &&
+          pStart[0] <= sh.rect[2] + g &&
+          pStart[1] >= sh.rect[1] - g &&
+          pStart[1] <= sh.rect[3] + g
         );
       })
       .sort(
@@ -136,7 +142,7 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
 
     if (hit) {
       let moved = false;
-      track(
+      trackPointer(
         (ev) => {
           const dx = ev.clientX - box.left - start[0];
           const dy = ev.clientY - box.top - start[1];
@@ -158,7 +164,7 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
     const kind = st.drawKind;
     const pts: Pt[] = [start];
     setDraft({ kind, pts: [start] });
-    track(
+    trackPointer(
       (ev) => {
         const p: Pt = [ev.clientX - box.left, ev.clientY - box.top];
         if (kind === "ink") {
@@ -179,15 +185,23 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
         const xs = pdfPts.map((p) => p[0]);
         const ys = pdfPts.map((p) => p[1]);
         const rect: [number, number, number, number] = [
-          Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys),
+          Math.min(...xs),
+          Math.min(...ys),
+          Math.max(...xs),
+          Math.max(...ys),
         ];
         if (Math.max(rect[2] - rect[0], rect[3] - rect[1]) < 3) return;
         const strokes: Pt[][] =
           kind === "ink" ? [pdfPts] : kind === "line" || kind === "arrow" ? [[pdfPts[0], pdfPts[1]]] : [];
         addShape(tabId, {
           id: crypto.randomUUID(),
-          src, kind, rect, strokes,
-          color: st.drawColor, width: st.drawWidth, opacity: 1,
+          src,
+          kind,
+          rect,
+          strokes,
+          color: st.drawColor,
+          width: st.drawWidth,
+          opacity: 1,
         });
       },
     );
@@ -227,24 +241,25 @@ export default function ShapeLayer({ tabId, src, shapes, viewport, zoom, active 
           />
         )}
       </svg>
-      {sel && !ghost && (() => {
-        const b = selBox(sel);
-        return (
-          <>
-            <div
-              className="shape-sel-outline"
-              style={{ left: b.l, top: b.t, width: b.w, height: b.h }}
-            />
-            <div
-              className="obj-actions"
-              style={{ left: b.l, top: Math.max(0, b.t - 30), pointerEvents: "auto" }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <button data-tip={t("tipDelete")} onClick={() => deleteShape(tabId, sel.id)}>{t("btnDelete")}</button>
-            </div>
-          </>
-        );
-      })()}
+      {sel &&
+        !ghost &&
+        (() => {
+          const b = selBox(sel);
+          return (
+            <>
+              <div className="shape-sel-outline" style={{ left: b.l, top: b.t, width: b.w, height: b.h }} />
+              <div
+                className="obj-actions"
+                style={{ left: b.l, top: Math.max(0, b.t - 30), pointerEvents: "auto" }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <button data-tip={t("tipDelete")} onClick={() => deleteShape(tabId, sel.id)}>
+                  {t("btnDelete")}
+                </button>
+              </div>
+            </>
+          );
+        })()}
     </div>
   );
 }

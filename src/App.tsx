@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import "./App.css";
+import { useEffect } from "react";
+import "./styles/index.css";
 import TabBar from "./components/TabBar";
 import Toolbar from "./components/Toolbar";
 import Sidebar from "./components/Sidebar";
@@ -7,63 +7,27 @@ import Viewer from "./components/Viewer";
 import SearchBar from "./components/SearchBar";
 import StatusBar from "./components/StatusBar";
 import SignatureModal from "./components/SignatureModal";
-import UtilModals from "./components/UtilModals";
+import Modals from "./components/modals";
 import CompareView from "./components/CompareView";
 import { useStore } from "./store";
 import {
-  openPaths, openFileDialog, saveActive, closeTabSafe,
-  deleteSelection, splitEvery, deleteObject, deleteShape, printActive,
+  openPaths,
+  openFileDialog,
+  saveActive,
+  closeTabSafe,
+  deleteSelection,
+  deleteObject,
+  deleteShape,
+  printActive,
+  runAutotest,
 } from "./actions";
 import { deleteStamp } from "./stamps";
+import { readLocal } from "./storage";
 import { onFileDrop, takePendingFiles, exitApp, listenEvent, confirmDialog } from "./backend";
 import { schedulePreview } from "./preview";
-import { t, useT } from "./i18n";
-
-function SplitModal({ onClose }: { onClose: () => void }) {
-  const t = useT();
-  const [n, setN] = useState(1);
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("splitTitle")}</h3>
-        <label>
-          {t("splitEvery")}
-          <input
-            type="number"
-            min={1}
-            value={n}
-            autoFocus
-            onChange={(e) => setN(Math.max(1, Number(e.target.value) || 1))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                onClose();
-                splitEvery(n);
-              }
-              if (e.key === "Escape") onClose();
-            }}
-          />
-          {t("splitPages")}
-        </label>
-        <div className="modal-actions">
-          <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
-          <button
-            className="btn-primary"
-            data-tip={t("tipSplitGo")}
-            onClick={() => {
-              onClose();
-              splitEvery(n);
-            }}
-          >
-            {t("btnChooseFolderSplit")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { t } from "./i18n";
 
 export default function App() {
-  const [splitOpen, setSplitOpen] = useState(false);
   const activeEdits = useStore((s) => s.tabs.find((t) => t.id === s.activeId)?.edits);
 
   useEffect(() => {
@@ -73,14 +37,16 @@ export default function App() {
 
   useEffect(() => {
     const cleanups: (() => void)[] = [];
-    onFileDrop((paths) => openPaths(paths)).then((u) => cleanups.push(u));
+    let disposed = false;
+    const keep = (u: () => void) => (disposed ? u() : cleanups.push(u));
+    onFileDrop((paths) => openPaths(paths)).then(keep);
 
     const drainPending = () =>
       takePendingFiles().then((paths) => {
         if (paths.length) openPaths(paths);
       });
-    drainPending();
-    listenEvent("open-files-pending", () => void drainPending()).then((u) => cleanups.push(u));
+    drainPending().then(() => void runAutotest());
+    listenEvent("open-files-pending", () => void drainPending()).then(keep);
     listenEvent("close-requested", async () => {
       const dirty = useStore.getState().tabs.filter((t) => t.dirty);
       if (!dirty.length) {
@@ -89,19 +55,29 @@ export default function App() {
       }
       const ok = await confirmDialog(t("cfQuitUnsaved", { n: dirty.length }));
       if (ok) exitApp();
-    }).then((u) => cleanups.push(u));
+    }).then(keep);
 
-    return () => cleanups.forEach((u) => u());
+    return () => {
+      disposed = true;
+      cleanups.forEach((u) => u());
+    };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const st = useStore.getState();
+      // Dialogs and the compare view own the keyboard while they are open.
+      if (st.utilModal || st.signatureModalOpen || st.passwordPrompt || st.compare || st.compareDialog)
+        return;
       const tab = st.tabs.find((t) => t.id === st.activeId);
+      const el = document.activeElement;
       const inInput =
-        document.activeElement instanceof HTMLInputElement ||
-        document.activeElement instanceof HTMLTextAreaElement;
+        e.isComposing ||
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement ||
+        (el instanceof HTMLElement && el.isContentEditable);
 
       if (mod && e.key.toLowerCase() === "o") {
         e.preventDefault();
@@ -134,87 +110,55 @@ export default function App() {
       } else if (mod && e.key === "0" && tab) {
         e.preventDefault();
         st.patchTab(tab.id, { zoom: 1 });
-      } else if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        tab && !inInput && st.stampSel
-      ) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && tab && !inInput && st.stampSel) {
         e.preventDefault();
         deleteStamp(tab.id, st.stampSel.id);
-      } else if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        tab && !inInput && st.shapeSel
-      ) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && tab && !inInput && st.shapeSel) {
         e.preventDefault();
         deleteShape(st.shapeSel.tabId, st.shapeSel.id);
-      } else if (
-        (e.key === "Delete" || e.key === "Backspace") &&
-        tab && !inInput && st.objSel
-      ) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && tab && !inInput && st.objSel) {
         e.preventDefault();
         deleteObject(tab.id, st.objSel.src, st.objSel.id);
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        tab && !inInput && tab.selected.length > 0 &&
+        tab &&
+        !inInput &&
+        tab.selected.length > 0 &&
         (window.getSelection()?.isCollapsed ?? true)
       ) {
         e.preventDefault();
         deleteSelection();
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "n" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "n" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "note" ? "select" : "note");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "e" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "e" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "edit" ? "select" : "edit");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "r" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "r" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "erase" ? "select" : "erase");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "t" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "t" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "text" ? "select" : "text");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "d" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "d" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "draw" ? "select" : "draw");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "l" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "l" && tab && !inInput) {
         e.preventDefault();
         st.setTool(st.tool === "link" ? "select" : "link");
-      } else if (
-        !mod && !e.altKey && e.key.toLowerCase() === "s" && tab && !inInput
-      ) {
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === "s" && tab && !inInput) {
         e.preventDefault();
         if (st.tool === "sign") {
           st.setTool("select");
         } else {
-          let sig: string | null = null;
-          try {
-            sig = localStorage.getItem("signature");
-          } catch {
-            sig = null;
-          }
+          const sig = readLocal("signature");
           if (sig) st.setTool("sign");
           else st.setSignatureModal(true);
         }
-      } else if (
-        tab && !inInput &&
-        (e.key === "PageDown" || (e.altKey && e.key === "ArrowDown"))
-      ) {
+      } else if (tab && !inInput && (e.key === "PageDown" || (e.altKey && e.key === "ArrowDown"))) {
         e.preventDefault();
         st.scrollTo(Math.min(tab.pages.length, tab.currentPage + 1));
-      } else if (
-        tab && !inInput &&
-        (e.key === "PageUp" || (e.altKey && e.key === "ArrowUp"))
-      ) {
+      } else if (tab && !inInput && (e.key === "PageUp" || (e.altKey && e.key === "ArrowUp"))) {
         e.preventDefault();
         st.scrollTo(Math.max(1, tab.currentPage - 1));
       } else if (e.key === "Escape" && tab && !inInput) {
@@ -233,7 +177,7 @@ export default function App() {
   return (
     <div className="app">
       <TabBar />
-      <Toolbar onSplit={() => setSplitOpen(true)} />
+      <Toolbar />
       <div className="main">
         <Sidebar />
         <Viewer />
@@ -241,9 +185,8 @@ export default function App() {
       </div>
       <StatusBar />
       <SignatureModal />
-      <UtilModals />
+      <Modals />
       <CompareView />
-      {splitOpen && <SplitModal onClose={() => setSplitOpen(false)} />}
     </div>
   );
 }

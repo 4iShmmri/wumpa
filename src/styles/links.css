@@ -1,0 +1,254 @@
+/* ---------- Links ---------- */
+.link-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.link-layer.active {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.viewer.link-mode .textLayer {
+  pointer-events: none;
+}
+
+.link-box {
+  position: absolute;
+  pointer-events: auto;
+  border: 1.5px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.link-box.existing:hover,
+.link-layer.active .link-box.existing {
+  border-color: rgba(37, 99, 235, 0.55);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.link-box.added {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.link-layer.active .link-box {
+  cursor: default;
+  border-style: dashed;
+}
+
+.link-box.sel {
+  border-style: solid;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.link-draw {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.link-pop {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg);
+  z-index: 5;
+  cursor: default;
+}
+
+.link-pop button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.link-pop button:hover {
+  background: var(--menu-hl);
+}
+
+.link-what {
+  color: var(--fg-dim);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-hint {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  width: max-content;
+  max-width: 90%;
+  margin: 0 auto;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+.lnk-modal {
+  min-width: 340px;
+}
+
+.lnk-modal .seg {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-chrome);
+}
+
+.lnk-modal .seg button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.lnk-modal .seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.modal.lnk-modal input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-chrome);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.draw-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.draw-popover {
+  position: absolute;
+  top: 36px;
+  inset-inline-start: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  z-index: 40;
+  white-space: nowrap;
+}
+
+.draw-popover .psep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 3px;
+}
+
+.draw-popover .dk {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.draw-popover .dk:hover {
+  background: var(--btn-hover);
+}
+
+.draw-popover .dk.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.draw-popover .cdot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.draw-popover .cdot.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.draw-popover .wdot {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.draw-popover .wdot:hover {
+  background: var(--btn-hover);
+}
+
+.draw-popover .wdot.on {
+  background: var(--accent-soft);
+}
+
+.draw-popover .wdot i {
+  display: block;
+  background: var(--fg);
+  border-radius: 50%;
+}

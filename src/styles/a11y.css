@@ -1,0 +1,33 @@
+/* ---------- Keyboard accessibility ----------
+   Focus rings for controls that became keyboard-reachable, plus the resets
+   that keep the tab close control looking like the span it used to be. */
+
+/* Tab close is a real button now; strip the UA button chrome. */
+button.tab-close {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fg-dim);
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.tab:focus-visible,
+.thumb:focus-visible,
+button.tab-close:focus-visible,
+.tab-add:focus-visible,
+.cmp-tb-btn:focus-visible,
+.cmp-split-caret:focus-visible,
+.toolbar > button:focus-visible,
+.tb-menu-wrap > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tab:focus-visible {
+  outline-offset: -3px;
+}

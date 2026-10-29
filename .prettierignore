@@ -1,0 +1,4 @@
+dist/
+src-tauri/target/
+public/pdfjs/
+node_modules/

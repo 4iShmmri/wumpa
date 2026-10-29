@@ -11,8 +11,12 @@ export function srcToOut(pages: PageSpec[], src: number): number | null {
   return i >= 0 ? i : null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function destToTarget(doc: PDFDocumentProxy, raw: any): Promise<{ src: number; top: number | null } | null> {
+type OutlineItems = NonNullable<Awaited<ReturnType<PDFDocumentProxy["getOutline"]>>>;
+
+async function destToTarget(
+  doc: PDFDocumentProxy,
+  raw: unknown,
+): Promise<{ src: number; top: number | null } | null> {
   try {
     const dest = typeof raw === "string" ? await doc.getDestination(raw) : raw;
     if (!Array.isArray(dest) || !dest.length) return null;
@@ -25,8 +29,7 @@ async function destToTarget(doc: PDFDocumentProxy, raw: any): Promise<{ src: num
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function convert(doc: PDFDocumentProxy, items: any[]): Promise<Bookmark[]> {
+async function convert(doc: PDFDocumentProxy, items: OutlineItems): Promise<Bookmark[]> {
   const out: Bookmark[] = [];
   for (const it of items) {
     const target = it.dest ? await destToTarget(doc, it.dest) : null;
@@ -58,7 +61,7 @@ function bmToWire(bm: Bookmark, pages: PageSpec[]): WireOutline {
   return {
     title: bm.title,
     page: url ? null : bm.src > 0 ? srcToOut(pages, bm.src) : null,
-    top: url ? null : bm.top ?? null,
+    top: url ? null : (bm.top ?? null),
     url,
     open: !!bm.open,
     children: bm.children.map((c) => bmToWire(c, pages)),

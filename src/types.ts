@@ -1,5 +1,5 @@
 export interface PageSpec {
-  src: number; // 1-based page number in the source file on disk; 0 = blank page
+  src: number; // 1-based page in the source file; blank pages carry a unique negative value
   rotation: number; // extra rotation delta, multiple of 90
   w?: number; // blank-page size in PDF points
   h?: number;
@@ -88,19 +88,25 @@ export interface LinkRemoval {
   rect: Rect; // rect of an existing link annotation to drop on save
 }
 
-export interface SigInfo {
-  field: string;
-  signer: string;
-  email?: string | null;
-  issuer: string;
-  signedAt?: string | null;
-  reason?: string | null;
-  location?: string | null;
-  intact: boolean;
-  coversWhole: boolean;
-  selfSigned: boolean;
-  page?: number | null;
-  error?: string | null;
+export interface SecurityPolicy {
+  maxAttempts: number;
+  wipe: boolean;
+}
+
+export interface SecurityInfo {
+  encrypted: boolean;
+  needsPassword: boolean;
+  method: string;
+  permissions: { print: boolean; copy: boolean; modify: boolean; annotate: boolean };
+  policy?: SecurityPolicy | null;
+}
+
+export interface AttemptStatus {
+  failures: number;
+  remaining?: number | null;
+  lockedSecs: number;
+  wipe: boolean;
+  wiped: boolean;
 }
 
 export interface Snapshot {
@@ -125,10 +131,14 @@ export interface Tab {
   edits: ObjectEdit[];
   stamps: StampItem[];
   shapes: ShapeItem[];
-  bookmarks: Bookmark[] | null; // null = untouched, the file's outline is kept
+  bookmarks: Bookmark[] | null; // null = not loaded yet
+  bookmarksTouched?: boolean; // the outline is rewritten on save only after an edit
   links: LinkItem[];
   linkRemovals: LinkRemoval[];
-  signatures?: SigInfo[] | null; // verification of the file on disk
+  security?: SecurityInfo | null; // password protection of the file on disk
+  untitled?: boolean; // lives in the temp dir until the first Save As
+  saving?: boolean; // edits are refused while the file is being written
+  layoutNonce?: number; // bumped when late-measured page sizes arrive
   previewPath: string | null;
   past: Snapshot[];
   future: Snapshot[];

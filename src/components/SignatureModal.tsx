@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { useT } from "../i18n";
+import Modal from "./ui/Modal";
+import { readLocal, writeLocal } from "../storage";
 
 const W = 500;
 const H = 200;
@@ -52,34 +54,17 @@ export default function SignatureModal() {
 
   useEffect(() => {
     if (!open) return;
-    let s: string | null = null;
-    try {
-      s = localStorage.getItem("signature");
-    } catch {
-      s = null;
-    }
+    const s = readLocal("signature");
     setSaved(s);
     setDrawing(!s);
     strokes.current = [];
     setHasInk(false);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        close();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
   if (!open) return null;
 
   const close = () => useStore.getState().setSignatureModal(false);
-  const use = () => {
+  const place = () => {
     useStore.getState().setTool("sign");
     close();
   };
@@ -127,56 +112,65 @@ export default function SignatureModal() {
     const octx = out.getContext("2d")!;
     octx.drawImage(
       canvasRef.current!,
-      minX * DPR, minY * DPR, out.width, out.height,
-      0, 0, out.width, out.height,
+      minX * DPR,
+      minY * DPR,
+      out.width,
+      out.height,
+      0,
+      0,
+      out.width,
+      out.height,
     );
-    const url = out.toDataURL("image/png");
-    try {
-      localStorage.setItem("signature", url);
-    } catch {
-      /* storage may be unavailable; signature still usable this session */
-    }
-    use();
+    writeLocal("signature", out.toDataURL("image/png"));
+    place();
   };
 
   return (
-    <div className="modal-backdrop" onClick={close}>
-      <div className="modal sig-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("sigTitle")}</h3>
-        {!drawing && saved ? (
-          <>
-            <div className="sig-preview">
-              <img src={saved} alt={t("sigAlt")} />
-            </div>
-            <div className="modal-actions">
-              <button data-tip={t("tipCancelEsc")} onClick={close}>{t("btnCancel")}</button>
-              <button data-tip={t("tipSigDrawNew")} onClick={() => setDrawing(true)}>{t("btnDrawNew")}</button>
-              <button className="btn-primary" data-tip={t("tipSigUse")} onClick={use}>{t("btnUse")}</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="sig-canvas-wrap" style={{ width: W, height: H }}>
-              <canvas
-                ref={canvasRef}
-                className="sig-canvas"
-                width={W * DPR}
-                height={H * DPR}
-                style={{ width: W, height: H }}
-                onPointerDown={onPointerDown}
-              />
-              <div className="sig-baseline" />
-            </div>
-            <div className="modal-actions">
-              <button data-tip={t("tipSigClear")} onClick={clear}>{t("btnClear")}</button>
-              <button data-tip={t("tipCancelEsc")} onClick={close}>{t("btnCancel")}</button>
-              <button className="btn-primary" data-tip={t("tipSigSave")} disabled={!hasInk} onClick={save}>
-                {t("btnSaveUse")}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Modal onClose={close} className="sig-modal">
+      <h3>{t("sigTitle")}</h3>
+      {!drawing && saved ? (
+        <>
+          <div className="sig-preview">
+            <img src={saved} alt={t("sigAlt")} />
+          </div>
+          <div className="modal-actions">
+            <button data-tip={t("tipCancelEsc")} onClick={close}>
+              {t("btnCancel")}
+            </button>
+            <button data-tip={t("tipSigDrawNew")} onClick={() => setDrawing(true)}>
+              {t("btnDrawNew")}
+            </button>
+            <button className="btn-primary" data-tip={t("tipSigUse")} onClick={place}>
+              {t("btnUse")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="sig-canvas-wrap" style={{ width: W, height: H }}>
+            <canvas
+              ref={canvasRef}
+              className="sig-canvas"
+              width={W * DPR}
+              height={H * DPR}
+              style={{ width: W, height: H }}
+              onPointerDown={onPointerDown}
+            />
+            <div className="sig-baseline" />
+          </div>
+          <div className="modal-actions">
+            <button data-tip={t("tipSigClear")} onClick={clear}>
+              {t("btnClear")}
+            </button>
+            <button data-tip={t("tipCancelEsc")} onClick={close}>
+              {t("btnCancel")}
+            </button>
+            <button className="btn-primary" data-tip={t("tipSigSave")} disabled={!hasInk} onClick={save}>
+              {t("btnSaveUse")}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }

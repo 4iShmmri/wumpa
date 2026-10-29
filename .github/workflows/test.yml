@@ -1,0 +1,51 @@
+name: Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Frontend checks
+        run: |
+          npx tsc --noEmit
+          npx eslint src
+          npx prettier --check src
+          npx vitest run
+
+      - name: Build the OCR helper
+        run: ./tools/ocr/build.sh
+
+      - name: Core checks
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --lib
+
+      # The real window in the system WebView: opens a reference document,
+      # reads it, exports it to Word and Excel, and quits.
+      - name: In-app test
+        run: ./tools/autotest.sh

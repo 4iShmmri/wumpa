@@ -14,7 +14,7 @@ export interface ExtractedText {
   fallbackFamily: string;
 }
 
-const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 
 interface It {
   str: string;
@@ -77,9 +77,7 @@ export function extractTextInRect(
   let provisional = items.filter((it) => intersects(it, bbox, 4, 2));
   if (!provisional.length) provisional = items.filter((it) => intersects(it, bbox, 12, 6));
   if (!provisional.length) return empty;
-  const size0 =
-    median(provisional.map((it) => it.fs).filter((v) => v > 0)) ||
-    (bbox[3] - bbox[1]) / 1.35;
+  const size0 = median(provisional.map((it) => it.fs).filter((v) => v > 0)) || (bbox[3] - bbox[1]) / 1.35;
 
   const seeds = new Set(
     items.filter((it) => intersects(it, bbox, Math.max(4, 0.4 * size0), Math.max(2, 0.25 * size0))),

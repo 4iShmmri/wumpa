@@ -1,0 +1,85 @@
+/* ---------- RTL & page navigation ---------- */
+.viewer {
+  direction: ltr;
+}
+
+[dir="rtl"] .toolbar > button:nth-child(-n + 3)[data-tip]:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+[dir="rtl"] .toolbar > button:nth-last-child(-n + 2)[data-tip]:hover::after,
+[dir="rtl"] .searchbar [data-tip]:hover::after {
+  right: auto;
+  left: 0;
+  transform: none;
+}
+
+.page-nav {
+  direction: ltr;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.page-nav button {
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.page-nav button:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+
+.page-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.page-nav input {
+  width: 42px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-chrome-2);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.page-nav input::-webkit-outer-spin-button,
+.page-nav input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-nav .page-total {
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.statusbar [data-tip]:hover::after {
+  top: auto;
+  bottom: calc(100% + 7px);
+}
+
+/* Popovers inside the LTR-forced viewer still follow the UI language. */
+[dir="rtl"] .note-popover,
+[dir="rtl"] .obj-actions,
+[dir="rtl"] .stamp-bar,
+[dir="rtl"] .te-tools,
+[dir="rtl"] .lnk-modal {
+  direction: rtl;
+}

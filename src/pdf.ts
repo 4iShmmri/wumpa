@@ -1,9 +1,11 @@
 import * as pdfjs from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
+import type { TextContent, TextItem } from "pdfjs-dist/types/src/display/api";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { loadPdfBytes, baseName } from "./backend";
+import { loadPdfBytes, baseName, passwordStatus, passwordAttempt } from "./backend";
 import { t } from "./i18n";
+import { flowError } from "./errors";
+import { useStore } from "./store";
 import type { PageSpec } from "./types";
 import { extractTextInRect, type ExtractedText } from "./textExtract";
 
@@ -24,8 +26,6 @@ export interface DocEntry {
   textCache: Map<number, string>;
   annotsCache: Map<number, ExistingAnnot[]>;
   linksCache: Map<number, ExistingLink[]>;
-  perms: number[] | null; // granted permission flags, null = unrestricted
-  needsPassword: boolean;
 }
 
 export interface ExistingLink {
@@ -45,12 +45,16 @@ export interface ExistingAnnot {
 }
 
 const cache = new Map<string, DocEntry>();
+// Bumped on every load start and eviction so a load that finishes late can
+// tell it lost the race and destroy its document instead of leaking it.
+const generation = new Map<string, number>();
 
-export const docPath = (t: { path: string; previewPath: string | null }) =>
-  t.previewPath ?? t.path;
+export const pageRotation = (base: number, delta: number) => (((base + delta) % 360) + 360) % 360;
+
+export const docPath = (t: { path: string; previewPath: string | null }) => t.previewPath ?? t.path;
 
 export function specBase(entry: Pick<DocEntry, "dims"> | null, spec: PageSpec): PageDims | null {
-  if (spec.src === 0) {
+  if (spec.src <= 0) {
     return {
       w: spec.w && spec.w > 0 ? spec.w : 612,
       h: spec.h && spec.h > 0 ? spec.h : 792,
@@ -62,24 +66,26 @@ export function specBase(entry: Pick<DocEntry, "dims"> | null, spec: PageSpec): 
 
 const pending = new Map<string, Promise<DocEntry>>();
 
-export function getDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
+// `eager` measures every page before resolving (the compare view lays out all
+// pages at once); tabs measure the first pages and the rest in the background.
+export function getDoc(tabId: string, path: string, version: number, eager = false): Promise<DocEntry> {
   const existing = cache.get(tabId);
   if (existing && existing.version === version) return Promise.resolve(existing);
   const key = `${tabId}:${version}:${path}`;
   let p = pending.get(key);
   if (!p) {
-    p = loadDoc(tabId, path, version).finally(() => pending.delete(key));
+    p = loadDoc(tabId, path, version, eager).finally(() => pending.delete(key));
     pending.set(key, p);
   }
   return p;
 }
 
-async function loadDoc(tabId: string, path: string, version: number): Promise<DocEntry> {
-  const existing = cache.get(tabId);
-  if (existing) {
-    cache.delete(tabId);
-    existing.doc.loadingTask.destroy().catch(() => {});
-  }
+const EAGER_PAGES = 40;
+
+async function loadDoc(tabId: string, path: string, version: number, eager: boolean): Promise<DocEntry> {
+  evictDoc(tabId);
+  const gen = (generation.get(tabId) ?? 0) + 1;
+  generation.set(tabId, gen);
 
   const buf = await loadPdfBytes(path);
   const task = pdfjs.getDocument({
@@ -89,36 +95,71 @@ async function loadDoc(tabId: string, path: string, version: number): Promise<Do
     standardFontDataUrl: new URL("pdfjs/standard_fonts/", document.baseURI).href,
   });
   let needsPassword = false;
+  let wiped = false;
   task.onPassword = (updatePassword: (pw: string) => void, reason: number) => {
     needsPassword = true;
-    const pw = window.prompt(
-      reason === 2 ? t("pwWrong") : t("pwPrompt", { name: baseName(path) }),
-    );
-    if (pw === null) void task.destroy();
-    else updatePassword(pw);
+    void (async () => {
+      const wrong = reason === 2;
+      let status = wrong ? await passwordAttempt(path, false) : await passwordStatus(path);
+      if (status?.wiped) {
+        wiped = true;
+        useStore.getState().setStatus(t("stFileWiped", { name: baseName(path) }));
+        void task.destroy();
+        return;
+      }
+      if (wrong && status) status = (await passwordStatus(path)) ?? status;
+      const pw = await useStore.getState().askPassword(baseName(path), wrong, status);
+      if (pw === null) void task.destroy();
+      else updatePassword(pw);
+    })();
   };
-  const doc = await task.promise;
-  const permsRaw = await doc.getPermissions().catch(() => null);
-  const perms = permsRaw ? Array.from(permsRaw) : null;
-
-  const dims: PageDims[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const vp = page.getViewport({ scale: 1 });
-    dims.push({ w: vp.width, h: vp.height, rotate: page.rotate });
+  let doc: PDFDocumentProxy;
+  try {
+    doc = await task.promise;
+  } catch (e) {
+    throw wiped ? flowError("FileWiped") : e;
   }
+  if (needsPassword) void passwordAttempt(path, true);
 
+  const pageCache = new Map<number, PDFPageProxy>();
+  const measure = async (from: number, to: number, dims: PageDims[]) => {
+    const pages = await Promise.all(Array.from({ length: to - from }, (_, i) => doc.getPage(from + i + 1)));
+    pages.forEach((page, i) => {
+      pageCache.set(from + i + 1, page);
+      const vp = page.getViewport({ scale: 1 });
+      dims[from + i] = { w: vp.width, h: vp.height, rotate: page.rotate };
+    });
+  };
+  const total = doc.numPages;
+  const head = eager ? total : Math.min(total, EAGER_PAGES);
+  const dims: PageDims[] = [];
+  await measure(0, head, dims);
+
+  if (generation.get(tabId) !== gen) {
+    doc.loadingTask.destroy().catch(() => {});
+    throw flowError("LoadCancelled");
+  }
+  if (head < total) {
+    // Unmeasured pages borrow the last known size until their real one arrives.
+    const guess = dims[head - 1] ?? { w: 612, h: 792, rotate: 0 };
+    for (let i = head; i < total; i++) dims[i] = guess;
+    void (async () => {
+      for (let from = head; from < total; from += 50) {
+        if (generation.get(tabId) !== gen) return;
+        await measure(from, Math.min(total, from + 50), dims);
+      }
+      if (generation.get(tabId) === gen) useStore.getState().patchTab(tabId, { layoutNonce: Date.now() });
+    })().catch(() => {});
+  }
   const entry: DocEntry = {
     doc,
     version,
     numPages: doc.numPages,
     dims,
-    pageCache: new Map(),
+    pageCache,
     textCache: new Map(),
     annotsCache: new Map(),
     linksCache: new Map(),
-    perms,
-    needsPassword,
   };
   cache.set(tabId, entry);
   return entry;
@@ -133,11 +174,27 @@ export async function getPage(entry: DocEntry, src: number): Promise<PDFPageProx
   return p;
 }
 
+// Text items and styles of a page. pdf.js's own getTextContent iterates
+// its stream with `for await`, which WebKit does not support, so the
+// stream is read by hand.
+export async function readTextContent(page: PDFPageProxy): Promise<TextContent> {
+  const reader = page.streamTextContent().getReader();
+  const content: TextContent = { items: [], styles: {}, lang: null };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    content.items.push(...value.items);
+    Object.assign(content.styles, value.styles);
+    content.lang ??= value.lang ?? null;
+  }
+  return content;
+}
+
 export async function getPageText(entry: DocEntry, src: number): Promise<string> {
   let t = entry.textCache.get(src);
   if (t === undefined) {
     const page = await getPage(entry, src);
-    const content = await page.getTextContent();
+    const content = await readTextContent(page);
     t = content.items.map((it) => ("str" in it ? it.str : "")).join(" ");
     entry.textCache.set(src, t);
   }
@@ -145,12 +202,7 @@ export async function getPageText(entry: DocEntry, src: number): Promise<string>
 }
 
 function normRect(r: number[]): [number, number, number, number] {
-  return [
-    Math.min(r[0], r[2]),
-    Math.min(r[1], r[3]),
-    Math.max(r[0], r[2]),
-    Math.max(r[1], r[3]),
-  ];
+  return [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
 }
 
 // quadPoints: flat array of x,y pairs (8 numbers = 1 quad), or legacy
@@ -187,7 +239,7 @@ export async function getTextInRect(
   bbox: [number, number, number, number],
 ): Promise<ExtractedText> {
   const page = await getPage(entry, src);
-  const content = await page.getTextContent();
+  const content = await readTextContent(page);
   const items = content.items.filter((it): it is TextItem => "str" in it);
   return extractTextInRect(items, content.styles ?? {}, bbox);
 }
@@ -250,6 +302,7 @@ export async function getLinks(entry: DocEntry, src: number): Promise<ExistingLi
 }
 
 export function evictDoc(tabId: string) {
+  generation.set(tabId, (generation.get(tabId) ?? 0) + 1);
   const e = cache.get(tabId);
   if (e) {
     e.doc.loadingTask.destroy().catch(() => {});

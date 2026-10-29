@@ -1,0 +1,159 @@
+/* ---------- Password protection ---------- */
+.sec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+.sec-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.sec-field > span {
+  color: var(--fg-dim);
+  text-align: start;
+  align-self: stretch;
+}
+.sec-grid + .modal-hint {
+  margin: 6px 0 4px;
+}
+.sec-field input,
+.sec-file-n {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-chrome);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+}
+.sec-field input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+.sec-file {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sec-file-n {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sec-file-n.empty {
+  color: var(--fg-dim);
+}
+.sec-file button,
+.sec-unlock button,
+.sec-tabs button {
+  border: 1px solid var(--border);
+  background: var(--bg-chrome-2);
+  color: var(--fg);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+}
+.sec-file button:hover,
+.sec-unlock button:hover:not(:disabled) {
+  background: var(--btn-hover);
+}
+.sec-unlock button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sec-tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.sec-tabs button {
+  border: none;
+  border-radius: 0;
+}
+.sec-tabs button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.sec-perms {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.sec-perms-k {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  margin-bottom: 2px;
+}
+.sec-perms label,
+.sec-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.sec-check {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.sec-idok {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #15803d;
+}
+:root[data-theme="dark"] .sec-idok {
+  color: #4ade80;
+}
+.modal-error {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--cmp-deleted);
+}
+.modal .modal-hint + .sec-grid {
+  margin-top: 4px;
+}
+
+.sb-badge {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-inline-end: 10px;
+}
+.sb-badge.ok {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+.sb-badge.bad {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.12);
+}
+.sb-badge.lock {
+  color: var(--fg);
+  background: var(--btn-hover);
+}
+:root[data-theme="dark"] .sb-badge.ok {
+  color: #4ade80;
+}
+:root[data-theme="dark"] .sb-badge.bad {
+  color: #f87171;
+}
+.sb-badge:hover {
+  filter: brightness(1.1);
+}

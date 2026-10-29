@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useStore, useActiveTab } from "../store";
 import { useT } from "../i18n";
 
@@ -7,6 +7,7 @@ export default function StatusBar() {
   const tab = useActiveTab();
   const status = useStore((s) => s.status);
   const [editVal, setEditVal] = useState<string | null>(null);
+  const cancelled = useRef(false);
 
   const total = tab?.pages.length ?? 0;
 
@@ -17,6 +18,12 @@ export default function StatusBar() {
   };
 
   const commit = (el?: HTMLInputElement) => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      setEditVal(null);
+      el?.blur();
+      return;
+    }
     if (editVal !== null) {
       const n = parseInt(editVal, 10);
       if (Number.isFinite(n)) goTo(n);
@@ -31,9 +38,19 @@ export default function StatusBar() {
       <span className="status-right">
         {tab && (
           <>
-            {tab.selected.length > 0 && (
-              <span>{t("sbSelected", { n: tab.selected.length })} · </span>
+            {tab.security?.encrypted && (
+              <button
+                className="sb-badge lock"
+                data-tip={t("tipSbProtected")}
+                onClick={() => useStore.getState().setUtilModal("decrypt")}
+              >
+                🔒{" "}
+                {t(tab.security.needsPassword ? "sbProtected" : "sbRestricted", {
+                  method: tab.security.method,
+                })}
+              </button>
             )}
+            {tab.selected.length > 0 && <span>{t("sbSelected", { n: tab.selected.length })} · </span>}
             <span className="page-nav">
               <button
                 data-tip={t("tipPrevPage")}
@@ -54,7 +71,7 @@ export default function StatusBar() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commit(e.currentTarget);
                     if (e.key === "Escape") {
-                      setEditVal(null);
+                      cancelled.current = true;
                       e.currentTarget.blur();
                     }
                   }}

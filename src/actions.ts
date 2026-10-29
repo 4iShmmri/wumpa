@@ -1,25 +1,63 @@
 import { useStore, getActiveTab } from "./store";
-import type { Tab, Note, ObjectEdit, StampItem, ShapeItem, Bookmark, LinkItem, Rect } from "./types";
+import type {
+  Tab,
+  Note,
+  ObjectEdit,
+  StampItem,
+  ShapeItem,
+  Bookmark,
+  LinkItem,
+  Rect,
+  SecurityPolicy,
+  PageSpec,
+} from "./types";
 import {
-  pickPdfs, pickSavePath, pickSavePathWithExt, pickDirectory, saveDocument,
-  mergeDocuments, splitDocument, baseName, dirName, confirmDialog,
-  printDocument, savePng, inTauri, compressPdf, createBlankPdf,
-  readImageB64, pickImagePath, type SaveExtras,
+  pickPdfs,
+  pickSavePath,
+  pickSavePathWithExt,
+  pickDirectory,
+  saveDocument,
+  mergeDocuments,
+  splitDocument,
+  baseName,
+  dirName,
+  confirmDialog,
+  openExternalUrl,
+  printDocument,
+  savePng,
+  inTauri,
+  compressPdf,
+  createBlankPdf,
+  readImageB64,
+  pickImagePath,
+  type SaveExtras,
+  encryptPdf,
+  securityInfo,
+  removeSecurity,
+  type PdfPermissions,
+  imageOnlyPages,
+  rebuildScanned,
+  listenPayload,
+  type ScanProgress,
+  exportPage,
+  exportWrite,
+  type ExportFormat,
+  type ExportPage,
+  type ExportProgress,
+  autotestPlan,
+  logLine,
+  exitApp,
 } from "./backend";
-import { getDoc, getPage, getPageText, docPath, specBase } from "./pdf";
-import {
-  loadBookmarks, outlineToWire, linksToWire, linkRemovalsToWire, newBookmark,
-} from "./outline";
+import { extractNativePage } from "./exportExtract";
+import { getDoc, getPage, getPageText, docPath, specBase, pageRotation } from "./pdf";
+import { loadBookmarks, outlineToWire, linksToWire, linkRemovalsToWire, newBookmark } from "./outline";
 import { report } from "./errors";
 import { measureText, rasterizeStamps, addTextStampAt, addImageStamp, loadImage } from "./stamps";
 import { t } from "./i18n";
 
-const ARABIC_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g;
 
-async function detectTabLang(
-  tabId: string,
-  entry: Awaited<ReturnType<typeof getDoc>>,
-) {
+async function detectTabLang(tabId: string, entry: Awaited<ReturnType<typeof getDoc>>) {
   try {
     let arabic = 0;
     let letters = 0;
@@ -54,10 +92,10 @@ export function getRecentFiles(): RecentFile[] {
 
 function pushRecent(path: string, name: string) {
   try {
-    const list = [
-      { path, name, time: Date.now() },
-      ...getRecentFiles().filter((r) => r.path !== path),
-    ].slice(0, 10);
+    const list = [{ path, name, time: Date.now() }, ...getRecentFiles().filter((r) => r.path !== path)].slice(
+      0,
+      10,
+    );
     localStorage.setItem("recentFiles", JSON.stringify(list));
   } catch {
     /* best effort */
@@ -66,16 +104,13 @@ function pushRecent(path: string, name: string) {
 
 export function dropRecent(path: string) {
   try {
-    localStorage.setItem(
-      "recentFiles",
-      JSON.stringify(getRecentFiles().filter((r) => r.path !== path)),
-    );
+    localStorage.setItem("recentFiles", JSON.stringify(getRecentFiles().filter((r) => r.path !== path)));
   } catch {
     /* best effort */
   }
 }
 
-export async function openPaths(paths: string[]) {
+export async function openPaths(paths: string[], opts: { untitled?: boolean } = {}) {
   for (const path of paths) {
     const existing = S().tabs.find((t) => t.path === path);
     if (existing) {
@@ -86,18 +121,33 @@ export async function openPaths(paths: string[]) {
     try {
       const entry = await getDoc(id, path, 0);
       const tab: Tab = {
-        id, path, name: baseName(path),
+        id,
+        path,
+        name: opts.untitled ? t("untitled") : baseName(path),
+        untitled: !!opts.untitled,
         pages: Array.from({ length: entry.numPages }, (_, i) => ({ src: i + 1, rotation: 0 })),
-        highlights: [], notes: [], edits: [], stamps: [], shapes: [],
-        bookmarks: null, links: [], linkRemovals: [],
-        previewPath: null, past: [], future: [],
-        zoom: 1, currentPage: 1, selected: [],
-        dirty: false, docVersion: 0,
+        highlights: [],
+        notes: [],
+        edits: [],
+        stamps: [],
+        shapes: [],
+        bookmarks: null,
+        links: [],
+        linkRemovals: [],
+        previewPath: null,
+        past: [],
+        future: [],
+        zoom: 1,
+        currentPage: 1,
+        selected: [],
+        dirty: false,
+        docVersion: 0,
       };
       S().addTab(tab);
-      if (inTauri) pushRecent(path, tab.name);
+      if (inTauri && !opts.untitled) pushRecent(path, tab.name);
+      void refreshSecurity(id);
       void detectTabLang(id, entry);
-      void loadBookmarks(entry.doc).then((bms) => S().patchTab(id, { bookmarks: bms }));
+      void refreshBookmarks(id);
     } catch (e) {
       report(t("stCouldNotOpen", { name: baseName(path) }), e);
     }
@@ -111,49 +161,83 @@ export async function openFileDialog() {
 
 export async function saveActive(saveAs: boolean) {
   const tab = getActiveTab();
-  if (!tab) return;
+  if (!tab || tab.saving) return;
+  if (tab.security?.encrypted) {
+    report(t("stSaveProtected"), null);
+    return;
+  }
   let outPath = tab.path;
-  if (saveAs) {
+  if (saveAs || tab.untitled) {
     const picked = await pickSavePath(tab.name);
     if (!picked) return;
-    outPath = picked.endsWith(".pdf") ? picked : picked + ".pdf";
+    outPath = ensurePdf(picked);
   }
+  S().patchTab(tab.id, { saving: true });
+  S().setStatus(t("stSaving"));
   try {
-    const stamps = await rasterizeStamps(tab.stamps);
+    const payload = await tabPayload(tab);
     await saveDocument(
-      tab.path, outPath, tab.pages, tab.highlights,
-      tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
+      tab.path,
+      outPath,
+      tab.pages,
+      payload.highlights,
+      payload.notes,
       tab.edits,
-      stamps,
-      tab.shapes.map((sh) => ({
-        src: sh.src, kind: sh.kind, rect: sh.rect, strokes: sh.strokes,
-        color: sh.color, width: sh.width, opacity: sh.opacity,
-      })),
+      payload.stamps,
+      payload.shapes,
       saveExtras(tab),
     );
     S().markSaved(tab.id, outPath, baseName(outPath));
     S().setStatus(t("stSaved", { name: baseName(outPath) }));
     void refreshBookmarks(tab.id);
+    void refreshSecurity(tab.id);
   } catch (e) {
+    S().patchTab(tab.id, { saving: false });
     report(t("stSaveFailed"), e);
   }
 }
 
+const ensurePdf = (path: string) => (/\.pdf$/i.test(path) ? path : path + ".pdf");
+
+// The per-page items the core understands, optionally limited to some source pages.
+async function tabPayload(tab: Tab, srcs?: Set<number>) {
+  const keep = <T extends { src: number }>(items: T[]) =>
+    srcs ? items.filter((i) => srcs.has(i.src)) : items;
+  return {
+    highlights: keep(tab.highlights),
+    notes: keep(tab.notes).map(({ src, x, y, text }) => ({ src, x, y, text })),
+    stamps: await rasterizeStamps(keep(tab.stamps)),
+    shapes: keep(tab.shapes).map((sh) => ({
+      src: sh.src,
+      kind: sh.kind,
+      rect: sh.rect,
+      strokes: sh.strokes,
+      color: sh.color,
+      width: sh.width,
+      opacity: sh.opacity,
+    })),
+  };
+}
+
 function saveExtras(tab: Tab): SaveExtras {
   return {
-    outline: tab.bookmarks ? outlineToWire(tab.bookmarks, tab.pages) : null,
+    outline: tab.bookmarksTouched && tab.bookmarks ? outlineToWire(tab.bookmarks, tab.pages) : null,
     links: linksToWire(tab.links, tab.pages),
     linkRemovals: linkRemovalsToWire(tab.linkRemovals, tab.pages),
   };
 }
 
+// Loads the file's outline into the tab unless the user already edited bookmarks.
 async function refreshBookmarks(tabId: string) {
   const tab = S().tabs.find((t) => t.id === tabId);
   if (!tab) return;
   try {
     const entry = await getDoc(tabId, docPath(tab), tab.docVersion);
     const bms = await loadBookmarks(entry.doc);
-    S().patchTab(tabId, { bookmarks: bms });
+    const cur = S().tabs.find((t) => t.id === tabId);
+    if (cur && cur.bookmarks === null && cur.docVersion === tab.docVersion) {
+      S().patchTab(tabId, { bookmarks: bms });
+    }
   } catch {
     /* best effort */
   }
@@ -177,7 +261,7 @@ export async function mergeFiles() {
   }
   const out = await pickSavePath("merged.pdf");
   if (!out) return;
-  const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
+  const outPath = ensurePdf(out);
   try {
     await mergeDocuments(paths, outPath);
     S().setStatus(t("stMerged", { n: paths.length }));
@@ -195,9 +279,20 @@ export async function extractSelected() {
   if (!specs.length) return;
   const out = await pickSavePath(tab.name.replace(/\.pdf$/i, "") + "-extract.pdf");
   if (!out) return;
-  const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
+  const outPath = ensurePdf(out);
   try {
-    await saveDocument(tab.path, outPath, specs, [], [], tab.edits, [], []);
+    const srcs = new Set(specs.map((p) => p.src));
+    const payload = await tabPayload(tab, srcs);
+    await saveDocument(
+      tab.path,
+      outPath,
+      specs,
+      payload.highlights,
+      payload.notes,
+      tab.edits,
+      payload.stamps,
+      payload.shapes,
+    );
     S().setStatus(t("stExtracted", { n: specs.length }));
     await openPaths([outPath]);
   } catch (e) {
@@ -208,6 +303,7 @@ export async function extractSelected() {
 export async function splitEvery(n: number) {
   const tab = getActiveTab();
   if (!tab || n < 1) return;
+  if (tab.dirty && !(await confirmDialog(t("compressDirtyWarn")))) return;
   const dir = await pickDirectory();
   if (!dir) return;
   const base = tab.name.replace(/\.pdf$/i, "");
@@ -230,7 +326,7 @@ export function rotateSelection(delta: number) {
   const indices = tab.selected.length ? tab.selected : [tab.currentPage - 1];
   S().mutateDoc(tab.id, (t) => ({
     pages: t.pages.map((p, i) =>
-      indices.includes(i) ? { ...p, rotation: (p.rotation + delta + 360) % 360 } : p,
+      indices.includes(i) ? { ...p, rotation: pageRotation(p.rotation, delta) } : p,
     ),
   }));
 }
@@ -250,6 +346,9 @@ export function deleteSelection() {
   }));
 }
 
+// Blank pages are identified by a unique negative src that survives reordering.
+const nextBlankSrc = (pages: PageSpec[]) => -(Math.max(0, ...pages.map((p) => -p.src)) + 1);
+
 export async function insertBlankPage(tabId: string, atIndex: number) {
   const tab = S().tabs.find((t) => t.id === tabId);
   if (!tab) return;
@@ -258,7 +357,7 @@ export async function insertBlankPage(tabId: string, atIndex: number) {
   const ref = tab.pages[atIndex - 1] ?? tab.pages[atIndex] ?? tab.pages[0];
   if (ref) {
     try {
-      const entry = ref.src === 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
+      const entry = ref.src <= 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
       const d = specBase(entry, ref);
       if (d) {
         const swap = ref.rotation % 180 !== 0;
@@ -271,7 +370,7 @@ export async function insertBlankPage(tabId: string, atIndex: number) {
   }
   S().mutateDoc(tabId, (t) => {
     const pages = [...t.pages];
-    pages.splice(atIndex, 0, { src: 0, rotation: 0, w, h });
+    pages.splice(atIndex, 0, { src: nextBlankSrc(t.pages), rotation: 0, w, h });
     return { pages, selected: [atIndex] };
   });
 }
@@ -300,7 +399,7 @@ export async function exportPageAsPng(tabId: string, index: number) {
   const path = out.toLowerCase().endsWith(".png") ? out : out + ".png";
   try {
     const canvas = document.createElement("canvas");
-    if (spec.src === 0) {
+    if (spec.src <= 0) {
       const d = specBase(null, spec)!;
       const swap = spec.rotation % 180 !== 0;
       canvas.width = Math.round((swap ? d.h : d.w) * 2);
@@ -311,7 +410,7 @@ export async function exportPageAsPng(tabId: string, index: number) {
     } else {
       const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
       const page = await getPage(entry, spec.src);
-      const rotation = (page.rotate + spec.rotation + 360) % 360;
+      const rotation = pageRotation(page.rotate, spec.rotation);
       const vp = page.getViewport({ scale: 2, rotation });
       canvas.width = Math.floor(vp.width);
       canvas.height = Math.floor(vp.height);
@@ -332,16 +431,15 @@ export async function printActive() {
   const tab = getActiveTab();
   if (!tab) return;
   try {
-    const stamps = await rasterizeStamps(tab.stamps);
+    const payload = await tabPayload(tab);
     await printDocument(
-      tab.path, tab.pages, tab.highlights,
-      tab.notes.map(({ src, x, y, text }) => ({ src, x, y, text })),
+      tab.path,
+      tab.pages,
+      payload.highlights,
+      payload.notes,
       tab.edits,
-      stamps,
-      tab.shapes.map((sh) => ({
-        src: sh.src, kind: sh.kind, rect: sh.rect, strokes: sh.strokes,
-        color: sh.color, width: sh.width, opacity: sh.opacity,
-      })),
+      payload.stamps,
+      payload.shapes,
     );
     S().setStatus(t("stPrintOpening"));
   } catch (e) {
@@ -380,8 +478,11 @@ export function addObjectEdits(tabId: string, newEdits: ObjectEdit[]) {
     for (const e of newEdits) {
       const last = edits[edits.length - 1];
       if (
-        e.action === "translate" && last && last.action === "translate" &&
-        last.id === e.id && last.src === e.src
+        e.action === "translate" &&
+        last &&
+        last.action === "translate" &&
+        last.id === e.id &&
+        last.src === e.src
       ) {
         edits[edits.length - 1] = {
           ...last,
@@ -407,7 +508,10 @@ export function moveShape(tabId: string, id: string, dx: number, dy: number) {
         ? {
             ...sh,
             rect: [sh.rect[0] + dx, sh.rect[1] + dy, sh.rect[2] + dx, sh.rect[3] + dy] as [
-              number, number, number, number,
+              number,
+              number,
+              number,
+              number,
             ],
             strokes: sh.strokes.map((st) => st.map(([x, y]) => [x + dx, y + dy] as [number, number])),
           }
@@ -457,20 +561,25 @@ export function replaceTextObject(
   S().setObjSel(null);
 }
 
-export const HIGHLIGHT_COLOR: [number, number, number] = [1.0, 0.82, 0.0];
+const HIGHLIGHT_COLOR: [number, number, number] = [1.0, 0.82, 0.0];
 
 export async function highlightSelection() {
-  const tab = getActiveTab();
-  if (!tab) return;
+  const active = getActiveTab();
+  if (!active) return;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     S().setStatus(t("stSelectTextFirst"));
     return;
   }
-  const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
-  const pageEls = Array.from(
-    document.querySelectorAll<HTMLElement>("[data-pageindex]"),
-  ).map((el) => ({ el, index: Number(el.dataset.pageindex), box: el.getBoundingClientRect() }));
+  const entry = await getDoc(active.id, docPath(active), active.docVersion);
+  // Zoom may have changed during the await; the DOM boxes follow the current tab.
+  const tab = getActiveTab();
+  if (!tab || tab.id !== active.id) return;
+  const pageEls = Array.from(document.querySelectorAll<HTMLElement>("[data-pageindex]")).map((el) => ({
+    el,
+    index: Number(el.dataset.pageindex),
+    box: el.getBoundingClientRect(),
+  }));
 
   const byIndex = new Map<number, DOMRect[]>();
   for (let r = 0; r < sel.rangeCount; r++) {
@@ -492,22 +601,25 @@ export async function highlightSelection() {
     return;
   }
 
+  const added: Tab["highlights"] = [];
   for (const [index, rects] of byIndex) {
     const spec = tab.pages[index];
     if (!spec) continue;
     const pageEl = pageEls.find((p) => p.index === index)!;
     const page = await getPage(entry, spec.src);
-    const rotation = (page.rotate + spec.rotation + 360) % 360;
-    const viewport = page.getViewport({ scale: tab.zoom, rotation });
+    const viewport = page.getViewport({
+      scale: tab.zoom,
+      rotation: pageRotation(page.rotate, spec.rotation),
+    });
     const pdfRects = rects.map((r) => {
       const [x1, y1] = viewport.convertToPdfPoint(r.left - pageEl.box.left, r.top - pageEl.box.top);
       const [x2, y2] = viewport.convertToPdfPoint(r.right - pageEl.box.left, r.bottom - pageEl.box.top);
       return [x1, y1, x2, y2] as [number, number, number, number];
     });
-    S().mutateDoc(tab.id, (t) => ({
-      highlights: [...t.highlights, { src: spec.src, rects: pdfRects, color: HIGHLIGHT_COLOR }],
-    }));
+    added.push({ src: spec.src, rects: pdfRects, color: HIGHLIGHT_COLOR });
   }
+  if (!added.length) return;
+  S().mutateDoc(tab.id, (tt) => ({ highlights: [...tt.highlights, ...added] }));
   sel.removeAllRanges();
   S().setStatus(t("stHighlightAdded"));
 }
@@ -522,7 +634,7 @@ export async function runSearch(query: string) {
     const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
     const matches: number[] = [];
     for (let i = 0; i < tab.pages.length; i++) {
-      if (tab.pages[i].src === 0) continue;
+      if (tab.pages[i].src <= 0) continue;
       const text = (await getPageText(entry, tab.pages[i].src)).toLowerCase();
       let pos = 0;
       while ((pos = text.indexOf(q, pos)) !== -1) {
@@ -531,7 +643,7 @@ export async function runSearch(query: string) {
       }
     }
     if (S().search.query === query) {
-      store.setSearch({ matches, current: 0 });
+      store.setSearch({ matches: [...new Set(matches)], current: 0 });
       if (matches.length) store.scrollTo(matches[0] + 1);
     }
   } catch (e) {
@@ -555,13 +667,9 @@ function humanSize(bytes: number): string {
 export async function compressActive(quality: number, maxDim: number) {
   const tab = getActiveTab();
   if (!tab) return;
-  const out = await pickSavePathWithExt(
-    tab.name.replace(/\.pdf$/i, "") + "-compressed.pdf",
-    "pdf",
-    "PDF",
-  );
+  const out = await pickSavePathWithExt(tab.name.replace(/\.pdf$/i, "") + "-compressed.pdf", "pdf", "PDF");
   if (!out) return;
-  const outPath = out.endsWith(".pdf") ? out : out + ".pdf";
+  const outPath = ensurePdf(out);
   try {
     const [orig, next] = await compressPdf(tab.path, outPath, quality, maxDim);
     const pct = orig > 0 ? Math.max(0, Math.round((1 - next / orig) * 100)) : 0;
@@ -576,9 +684,7 @@ export async function createNewPdf(w: number, h: number, pages: number) {
   try {
     const path = await createBlankPdf(w, h, pages);
     if (!path) return;
-    await openPaths([path]);
-    const tab = S().tabs.find((tb) => tb.path === path);
-    if (tab) S().patchTab(tab.id, { name: t("untitled") });
+    await openPaths([path], { untitled: true });
   } catch (e) {
     report(t("stNewFailed"), e);
   }
@@ -586,7 +692,7 @@ export async function createNewPdf(w: number, h: number, pages: number) {
 
 async function currentPageSize(tab: Tab): Promise<[number, number]> {
   const spec = tab.pages[tab.currentPage - 1] ?? tab.pages[0];
-  const entry = spec.src === 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
+  const entry = spec.src <= 0 ? null : await getDoc(tab.id, docPath(tab), tab.docVersion);
   const base = specBase(entry, spec);
   const w = base?.w ?? 612;
   const h = base?.h ?? 792;
@@ -598,7 +704,7 @@ export async function insertImageFromFile() {
   if (!tab) return;
   const spec = tab.pages[tab.currentPage - 1];
   if (!spec) return;
-  if (spec.src === 0) {
+  if (spec.src <= 0) {
     S().setStatus(t("stCouldNotPlace"));
     return;
   }
@@ -625,7 +731,7 @@ export async function insertTableGrid(rows: number, cols: number) {
   if (!tab) return;
   const spec = tab.pages[tab.currentPage - 1];
   if (!spec) return;
-  if (spec.src === 0) {
+  if (spec.src <= 0) {
     S().setStatus(t("stCouldNotPlace"));
     return;
   }
@@ -660,7 +766,12 @@ export async function insertTableGrid(rows: number, cols: number) {
       ctx.stroke();
     }
     ctx.lineWidth = 1.5 * PX * scale;
-    ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, canvas.width - ctx.lineWidth, canvas.height - ctx.lineWidth);
+    ctx.strokeRect(
+      ctx.lineWidth / 2,
+      ctx.lineWidth / 2,
+      canvas.width - ctx.lineWidth,
+      canvas.height - ctx.lineWidth,
+    );
     const dataUrl = canvas.toDataURL("image/png");
     const x1 = (pw - tw) / 2;
     const y1 = (ph - th) / 2;
@@ -674,7 +785,7 @@ export function insertTextAtCenter(text: string, size: number) {
   const tab = getActiveTab();
   if (!tab) return;
   const spec = tab.pages[tab.currentPage - 1];
-  if (!spec || spec.src === 0) return;
+  if (!spec || spec.src <= 0) return;
   void (async () => {
     try {
       const [pw, ph] = await currentPageSize(tab);
@@ -690,27 +801,226 @@ export function insertTextAtCenter(text: string, size: number) {
 
 let cmpSeq = 0;
 
-export async function compareActive() {
+export function compareActive() {
+  const tab = getActiveTab();
+  S().openCompareDialog(tab ? docPath(tab) || null : null);
+}
+
+export function startCompare(oldPath: string, newPath: string) {
+  const seq = ++cmpSeq;
+  S().openCompare({
+    leftKey: `__cmpL__${seq}`,
+    leftPath: oldPath,
+    leftVersion: 0,
+    leftName: baseName(oldPath),
+    rightKey: `__cmpR__${seq}`,
+    rightPath: newPath,
+    rightVersion: 0,
+    rightName: baseName(newPath),
+  });
+}
+
+// ---- Password protection ----
+
+// Describes the file on disk, so it is refreshed whenever the tab's path or
+// saved version changes.
+export async function refreshSecurity(tabId: string) {
+  const tab = S().tabs.find((tb) => tb.id === tabId);
+  if (!tab || !inTauri) return;
+  const security = await securityInfo(tab.path).catch(() => null);
+  if (S().tabs.some((tb) => tb.id === tabId && tb.path === tab.path)) {
+    S().patchTab(tabId, { security });
+  }
+}
+
+function outName(tab: Tab, suffix: string) {
+  return tab.name.replace(/\.pdf$/i, "") + suffix + ".pdf";
+}
+
+async function pickOut(tab: Tab, suffix: string): Promise<string | null> {
+  const out = await pickSavePathWithExt(outName(tab, suffix), "pdf", "PDF");
+  return out ? ensurePdf(out) : null;
+}
+
+export async function protectActive(
+  userPassword: string,
+  ownerPassword: string,
+  perms: PdfPermissions,
+  policy: SecurityPolicy | null = null,
+) {
   const tab = getActiveTab();
   if (!tab) return;
+  const outPath = await pickOut(tab, "-protected");
+  if (!outPath) return;
   try {
-    const paths = await pickPdfs(false);
-    if (!paths || !paths.length) return;
-    const rightPath = paths[0];
-    const seq = ++cmpSeq;
-    S().openCompare({
-      leftKey: `__cmpL__${seq}`,
-      leftPath: docPath(tab),
-      leftVersion: 0,
-      leftName: tab.name,
-      rightKey: `__cmpR__${seq}`,
-      rightPath,
-      rightVersion: 0,
-      rightName: baseName(rightPath),
-    });
+    await encryptPdf(tab.path, outPath, userPassword, ownerPassword, perms, policy);
+    S().setStatus(t("stProtected", { name: baseName(outPath) }));
+    await openPaths([outPath]);
   } catch (e) {
-    report(t("stCmpFailed"), e);
+    report(t("stProtectFailed"), e);
   }
+}
+
+export async function unprotectActive(password: string): Promise<boolean> {
+  const tab = getActiveTab();
+  if (!tab) return false;
+  const outPath = await pickOut(tab, "-unlocked");
+  if (!outPath) return false;
+  try {
+    await removeSecurity(tab.path, outPath, password);
+    S().setStatus(t("stUnprotected", { name: baseName(outPath) }));
+    await openPaths([outPath]);
+    return true;
+  } catch (e) {
+    const msg = String(e);
+    if (/wrong password/i.test(msg)) {
+      report(t("stWrongPassword"), e);
+    } else if (/permissions password/i.test(msg)) {
+      report(t("stNeedOwnerPassword"), e);
+    } else {
+      report(t("stUnprotectFailed"), e);
+    }
+    return false;
+  }
+}
+
+// ---- Image to PDF (scanned pages) ----
+
+export async function scannedPagesOfActive(): Promise<number[]> {
+  const tab = getActiveTab();
+  if (!tab) return [];
+  try {
+    return await imageOnlyPages(tab.path);
+  } catch {
+    return [];
+  }
+}
+
+// Rebuilds the chosen scanned pages as real text and opens the result.
+export async function rebuildScannedActive(
+  pages: number[],
+  langs: string[],
+  onProgress: (p: ScanProgress) => void,
+): Promise<boolean> {
+  const tab = getActiveTab();
+  if (!tab || !pages.length) return false;
+  const outPath = await pickOut(tab, "-text");
+  if (!outPath) return false;
+  const stop = await listenPayload<ScanProgress>("scan-progress", onProgress);
+  try {
+    await rebuildScanned(tab.path, outPath, pages, langs);
+    S().setStatus(t("stScanDone", { name: baseName(outPath), n: pages.length }));
+    await openPaths([outPath]);
+    return true;
+  } catch (e) {
+    report(t("stScanFailed"), e);
+    return false;
+  } finally {
+    stop();
+  }
+}
+
+// ---- Export to Word / Excel ----
+
+export interface ExportStatus {
+  page: number; // 1-based source page being processed
+  index: number; // 0-based position in the batch
+  total: number;
+  stage: string; // extract | recognize | layout | write
+}
+
+// Exports the chosen source pages of a tab to `outPath` as a Word or Excel
+// file; scanned pages are recognised with `langs`.
+export async function exportTabTo(
+  tab: Tab,
+  format: ExportFormat,
+  srcs: number[],
+  langs: string[],
+  outPath: string,
+  onProgress: (p: ExportStatus) => void,
+): Promise<void> {
+  const total = srcs.length;
+  let index = 0;
+  const stop = await listenPayload<ExportProgress>("export-progress", (p) => {
+    const stage = p.stage === "ocr" ? "recognize" : p.stage === "done" ? "layout" : null;
+    if (stage) onProgress({ page: p.page, index, total, stage });
+  });
+  try {
+    const scanned = new Set(await imageOnlyPages(tab.path));
+    const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
+    const pages: ExportPage[] = [];
+    for (const src of srcs) {
+      onProgress({ page: src, index, total, stage: "extract" });
+      const input = scanned.has(src)
+        ? { kind: "scanned" as const, page: src }
+        : await extractNativePage(entry, src);
+      onProgress({ page: src, index, total, stage: "layout" });
+      pages.push(await exportPage(tab.path, input, langs));
+      index++;
+    }
+    onProgress({ page: srcs[total - 1], index: total - 1, total, stage: "write" });
+    await exportWrite(pages, format, outPath, S().effectiveLang);
+  } finally {
+    stop();
+  }
+}
+
+// Asks where to save, then exports the chosen pages of the active tab.
+export async function exportActive(
+  format: ExportFormat,
+  srcs: number[],
+  langs: string[],
+  onProgress: (p: ExportStatus) => void,
+): Promise<{ ok: boolean; error?: string }> {
+  const tab = getActiveTab();
+  if (!tab || !srcs.length) return { ok: false };
+  const ext = format;
+  const picked = await pickSavePathWithExt(
+    tab.name.replace(/\.pdf$/i, "") + "." + ext,
+    ext,
+    format === "docx" ? "Word" : "Excel",
+  );
+  if (!picked) return { ok: false };
+  const outPath = picked.toLowerCase().endsWith("." + ext) ? picked : picked + "." + ext;
+  try {
+    await exportTabTo(tab, format, srcs, langs, outPath, onProgress);
+    S().setStatus(t("stExportDone", { name: baseName(outPath) }));
+    return { ok: true };
+  } catch (e) {
+    report(t("stExportFailed"), e);
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---- Automated in-app test (debug builds) ----
+
+// Opens the planned file, reads its text, exports it to Word and Excel,
+// writes the verdict to the app log and quits. Runs the real viewer and
+// the real IPC, which unit tests cannot.
+export async function runAutotest(): Promise<void> {
+  const plan = await autotestPlan();
+  if (!plan) return;
+  const verdict = async (): Promise<string> => {
+    await openPaths([plan.src]);
+    const tab = S().tabs.find((t) => t.path === plan.src);
+    if (!tab) return "failed: file did not open";
+    const entry = await getDoc(tab.id, docPath(tab), tab.docVersion);
+    const text = await getPageText(entry, 1);
+    if (!text.trim()) return "failed: no text read from page 1";
+    const srcs = tab.pages.filter((p) => p.src > 0).map((p) => p.src);
+    const quiet = () => {};
+    await exportTabTo(tab, "docx", srcs, ["ar", "en"], plan.out + ".docx", quiet);
+    await exportTabTo(tab, "xlsx", srcs, ["ar", "en"], plan.out + ".xlsx", quiet);
+    return `ok: ${srcs.length} page(s), ${text.length} chars on page 1`;
+  };
+  let result: string;
+  try {
+    result = await verdict();
+  } catch (e) {
+    result = `failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  logLine(`autotest ${result}`);
+  await exitApp();
 }
 
 // ---- Bookmarks (outline) ----
@@ -720,9 +1030,7 @@ function mapTree(nodes: Bookmark[], fn: (b: Bookmark) => Bookmark): Bookmark[] {
 }
 
 function removeNode(nodes: Bookmark[], id: string): Bookmark[] {
-  return nodes
-    .filter((n) => n.id !== id)
-    .map((n) => ({ ...n, children: removeNode(n.children, id) }));
+  return nodes.filter((n) => n.id !== id).map((n) => ({ ...n, children: removeNode(n.children, id) }));
 }
 
 function currentBookmarks(tab: Tab): Bookmark[] {
@@ -736,6 +1044,7 @@ export function addBookmarkHere() {
   const src = spec && spec.src > 0 ? spec.src : 0;
   const title = t("bmNewTitle", { n: tab.currentPage });
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: [...currentBookmarks(tt), newBookmark(title, src, null)],
   }));
 }
@@ -744,6 +1053,7 @@ export function renameBookmark(id: string, title: string) {
   const tab = getActiveTab();
   if (!tab) return;
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, title } : b)),
   }));
 }
@@ -754,6 +1064,7 @@ export function retargetBookmark(id: string) {
   const spec = tab.pages[tab.currentPage - 1];
   const src = spec && spec.src > 0 ? spec.src : 0;
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, src, url: null, top: null } : b)),
   }));
 }
@@ -761,13 +1072,17 @@ export function retargetBookmark(id: string) {
 export function deleteBookmark(id: string) {
   const tab = getActiveTab();
   if (!tab) return;
-  S().mutateDoc(tab.id, (tt) => ({ bookmarks: removeNode(currentBookmarks(tt), id) }));
+  S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
+    bookmarks: removeNode(currentBookmarks(tt), id),
+  }));
 }
 
 export function toggleBookmarkOpen(id: string) {
   const tab = getActiveTab();
   if (!tab) return;
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: mapTree(currentBookmarks(tt), (b) => (b.id === id ? { ...b, open: !b.open } : b)),
   }));
 }
@@ -787,6 +1102,7 @@ export function moveBookmark(id: string, dir: -1 | 1) {
   const tab = getActiveTab();
   if (!tab) return;
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: editSiblings(currentBookmarks(tt), id, (list, i) => {
       const j = i + dir;
       if (j < 0 || j >= list.length) return null;
@@ -800,6 +1116,7 @@ export function indentBookmark(id: string) {
   const tab = getActiveTab();
   if (!tab) return;
   S().mutateDoc(tab.id, (tt) => ({
+    bookmarksTouched: true,
     bookmarks: editSiblings(currentBookmarks(tt), id, (list, i) => {
       if (i === 0) return null;
       const prev = list[i - 1];
@@ -827,7 +1144,7 @@ function liftOut(nodes: Bookmark[], id: string): Bookmark[] {
 export function outdentBookmark(id: string) {
   const tab = getActiveTab();
   if (!tab) return;
-  S().mutateDoc(tab.id, (tt) => ({ bookmarks: liftOut(currentBookmarks(tt), id) }));
+  S().mutateDoc(tab.id, (tt) => ({ bookmarksTouched: true, bookmarks: liftOut(currentBookmarks(tt), id) }));
 }
 
 export function gotoBookmark(bm: Bookmark) {
@@ -877,7 +1194,6 @@ export async function openLinkUrl(url: string) {
     S().setStatus(t("lnkBlocked"));
     return;
   }
-  const { openExternalUrl } = await import("./backend");
   await openExternalUrl(url);
 }
 

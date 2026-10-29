@@ -2,11 +2,7 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
 
-type R<T> = Result<T, String>;
-
-fn err<E: std::fmt::Display>(e: E) -> String {
-    e.to_string()
-}
+use crate::common::{err, R};
 
 fn single_filter(dict: &Dictionary) -> Option<Vec<u8>> {
     match dict.get(b"Filter") {
@@ -50,18 +46,16 @@ fn plan_recompress(s: &Stream, quality: u8, max_dim: u32) -> Option<(Vec<u8>, u3
     {
         return None;
     }
-    let w = s.dict.get(b"Width").ok()?.as_i64().ok()? as u32;
-    let h = s.dict.get(b"Height").ok()?.as_i64().ok()? as u32;
-    if w == 0 || h == 0 {
+    let w = u32::try_from(s.dict.get(b"Width").ok()?.as_i64().ok()?).ok()?;
+    let h = u32::try_from(s.dict.get(b"Height").ok()?.as_i64().ok()?).ok()?;
+    if w == 0 || h == 0 || s.dict.has(b"Mask") {
         return None;
     }
     match single_filter(&s.dict)?.as_slice() {
         b"DCTDecode" => {
             let cs_ok = match s.dict.get(b"ColorSpace") {
                 Err(_) => true,
-                Ok(Object::Name(n)) => {
-                    matches!(n.as_slice(), b"DeviceRGB" | b"DeviceGray" | b"DeviceCMYK")
-                }
+                Ok(Object::Name(n)) => matches!(n.as_slice(), b"DeviceRGB" | b"DeviceGray"),
                 _ => false,
             };
             if !cs_ok {
@@ -88,7 +82,8 @@ fn plan_recompress(s: &Stream, quality: u8, max_dim: u32) -> Option<(Vec<u8>, u3
                 _ => return None,
             };
             let raw = s.decompressed_content().ok()?;
-            if raw.len() != (w as usize) * (h as usize) * ch {
+            let expect = (w as usize).checked_mul(h as usize)?.checked_mul(ch)?;
+            if raw.len() != expect {
                 return None;
             }
             let img = if ch == 3 {
@@ -135,6 +130,7 @@ pub fn compress_document(doc: &mut Document, quality: u8, max_dim: u32) -> R<()>
                     s.dict.set("ColorSpace", Object::Name(cs));
                     s.dict.set("Filter", Object::Name(b"DCTDecode".to_vec()));
                     s.dict.remove(b"DecodeParms");
+                    s.dict.remove(b"Decode");
                     s.dict.set("Length", bytes.len() as i64);
                     s.content = bytes;
                 }
@@ -149,7 +145,7 @@ pub fn compress_document(doc: &mut Document, quality: u8, max_dim: u32) -> R<()>
 
 pub fn compress_file(src: &str, out: &str, quality: u8, max_dim: u32) -> R<[u64; 2]> {
     let orig = std::fs::metadata(src).map_err(err)?.len();
-    let mut doc = Document::load(src).map_err(err)?;
+    let mut doc = crate::common::load_plain(src)?;
     compress_document(&mut doc, quality.clamp(10, 95), max_dim.max(16))?;
     doc.save(out).map_err(err)?;
     let new = std::fs::metadata(out).map_err(err)?.len();
@@ -252,7 +248,14 @@ mod tests {
                 Operation::new("q", vec![]),
                 Operation::new(
                     "cm",
-                    vec![200.into(), 0.into(), 0.into(), 200.into(), 50.into(), 500.into()],
+                    vec![
+                        200.into(),
+                        0.into(),
+                        0.into(),
+                        200.into(),
+                        50.into(),
+                        500.into(),
+                    ],
                 ),
                 Operation::new("Do", vec![Object::Name(b"Im0".to_vec())]),
                 Operation::new("Q", vec![]),
@@ -308,13 +311,7 @@ mod tests {
         let src = dir.join(format!("wumpa-cmp-src-{}.pdf", std::process::id()));
         let out = dir.join(format!("wumpa-cmp-out-{}.pdf", std::process::id()));
         doc.save(&src).unwrap();
-        let [o, n] = compress_file(
-            src.to_str().unwrap(),
-            out.to_str().unwrap(),
-            60,
-            32,
-        )
-        .unwrap();
+        let [o, n] = compress_file(src.to_str().unwrap(), out.to_str().unwrap(), 60, 32).unwrap();
         assert!(n < o, "expected {n} < {o}");
         let re = Document::load(&out).unwrap();
         let img = find_image(&re);

@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import type { Bookmark, Tab } from "../types";
 import { useT } from "../i18n";
+import { useOutsideClose } from "./ui/useOutsideClose";
+import { handleMenuKeys, isContextMenuKey, isKeyboardClick, useFocusMenuOnOpen } from "./ui/menuKeys";
 import {
-  addBookmarkHere, renameBookmark, retargetBookmark, deleteBookmark, toggleBookmarkOpen,
-  moveBookmark, indentBookmark, outdentBookmark, gotoBookmark,
+  addBookmarkHere,
+  renameBookmark,
+  retargetBookmark,
+  deleteBookmark,
+  toggleBookmarkOpen,
+  moveBookmark,
+  indentBookmark,
+  outdentBookmark,
+  gotoBookmark,
 } from "../actions";
 
 interface Target {
@@ -16,9 +25,21 @@ interface Target {
 interface Menu extends Target {
   x: number;
   y: number;
+  fromKeyboard: boolean;
+  returnTo: HTMLElement | null;
 }
 
-function Row({ bm, depth, isRoot, index, count, editing, menuId, setEditing, openMenu }: {
+function Row({
+  bm,
+  depth,
+  isRoot,
+  index,
+  count,
+  editing,
+  menuId,
+  setEditing,
+  openMenu,
+}: {
   bm: Bookmark;
   depth: number;
   isRoot: boolean;
@@ -27,7 +48,7 @@ function Row({ bm, depth, isRoot, index, count, editing, menuId, setEditing, ope
   editing: string | null;
   menuId: string | null;
   setEditing: (id: string | null) => void;
-  openMenu: (e: React.MouseEvent, tg: Target) => void;
+  openMenu: (e: React.MouseEvent | React.KeyboardEvent, tg: Target) => void;
 }) {
   const t = useT();
   const [draft, setDraft] = useState(bm.title);
@@ -53,15 +74,33 @@ function Row({ bm, depth, isRoot, index, count, editing, menuId, setEditing, ope
           e.preventDefault();
           openMenu(e, me);
         }}
+        onKeyDown={(e) => {
+          if (isContextMenuKey(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            openMenu(e, me);
+          }
+        }}
       >
         <button
           className={"bm-twist" + (hasKids ? "" : " hidden")}
           onClick={() => toggleBookmarkOpen(bm.id)}
           tabIndex={hasKids ? 0 : -1}
+          aria-expanded={hasKids ? bm.open : undefined}
+          aria-hidden={hasKids ? undefined : true}
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: bm.open ? "rotate(90deg)" : "none" }}>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ transform: bm.open ? "rotate(90deg)" : "none" }}
+          >
             <path d="M8 5l8 7-8 7" />
           </svg>
         </button>
@@ -96,7 +135,16 @@ function Row({ bm, depth, isRoot, index, count, editing, menuId, setEditing, ope
           </button>
         )}
 
-        <button className="bm-more" data-tip={t("tipBmMore")} onClick={(e) => openMenu(e, me)}>⋯</button>
+        <button
+          className="bm-more"
+          data-tip={t("tipBmMore")}
+          aria-label={t("tipBmMore")}
+          aria-haspopup="menu"
+          aria-expanded={menuId === bm.id}
+          onClick={(e) => openMenu(e, me)}
+        >
+          ⋯
+        </button>
       </div>
       {bm.open &&
         bm.children.map((c, i) => (
@@ -122,38 +170,44 @@ export default function BookmarkPanel({ tab }: { tab: Tab }) {
   const bms = tab.bookmarks ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [menuEl, setMenuEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMenu(null);
     setEditing(null);
   }, [tab.id]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const onDown = (e: PointerEvent) => {
-      if (!(e.target as Element | null)?.closest?.(".ctx-menu")) setMenu(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setMenu(null);
-      }
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [menu]);
+  // A menu driven from the keyboard hands focus back to the control that opened it.
+  const closeMenu = () => {
+    const m = menu;
+    setMenu(null);
+    if (m && menuEl?.contains(document.activeElement)) m.returnTo?.focus();
+  };
 
-  const openMenu = (e: React.MouseEvent, tg: Target) => setMenu({ ...tg, x: e.clientX, y: e.clientY });
+  useOutsideClose(!!menu, ".ctx-menu", closeMenu);
+  useFocusMenuOnOpen(menuEl, !!menu?.fromKeyboard);
+
+  // From a pointer the menu opens at the pointer; from the keyboard it anchors
+  // to the control (the "more" button or the row) instead of at (0,0).
+  const openMenu = (e: React.MouseEvent | React.KeyboardEvent, tg: Target) => {
+    const el = e.currentTarget as HTMLElement;
+    const keyboard = !("clientX" in e) || isKeyboardClick(e);
+    if (keyboard) {
+      const r = el.getBoundingClientRect();
+      const more = el.classList.contains("bm-more") ? el : el.querySelector<HTMLElement>(".bm-more");
+      const a = (more ?? el).getBoundingClientRect();
+      setMenu({ ...tg, x: a.left, y: Math.max(r.bottom, a.bottom) + 2, fromKeyboard: true, returnTo: el });
+    } else {
+      setMenu({ ...tg, x: e.clientX, y: e.clientY, fromKeyboard: false, returnTo: null });
+    }
+  };
 
   const item = (label: string, fn: () => void, disabled = false) => (
     <button
+      role="menuitem"
       disabled={disabled}
       onClick={() => {
-        setMenu(null);
+        closeMenu();
         fn();
       }}
     >
@@ -164,8 +218,17 @@ export default function BookmarkPanel({ tab }: { tab: Tab }) {
   return (
     <div className="outline-panel">
       <button className="bm-add" data-tip={t("tipBmAdd")} onClick={() => addBookmarkHere()}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z M12 8v6 M9 11h6" />
         </svg>
         <span>{t("bmAdd")}</span>
@@ -198,6 +261,9 @@ export default function BookmarkPanel({ tab }: { tab: Tab }) {
       {menu && (
         <div
           className="ctx-menu"
+          role="menu"
+          ref={setMenuEl}
+          onKeyDown={(e) => handleMenuKeys(e, menuEl)}
           style={{
             left: Math.min(menu.x, window.innerWidth - 210),
             top: Math.min(menu.y, window.innerHeight - 290),
@@ -205,12 +271,12 @@ export default function BookmarkPanel({ tab }: { tab: Tab }) {
         >
           {item(t("tipBmRename"), () => setEditing(menu.bm.id))}
           {item(t("tipBmRetarget"), () => retargetBookmark(menu.bm.id))}
-          <div className="ctx-sep" />
+          <div className="ctx-sep" role="separator" />
           {item(t("tipBmUp"), () => moveBookmark(menu.bm.id, -1), menu.index === 0)}
           {item(t("tipBmDown"), () => moveBookmark(menu.bm.id, 1), menu.index === menu.count - 1)}
           {item(t("tipBmIndent"), () => indentBookmark(menu.bm.id), menu.index === 0)}
           {item(t("tipBmOutdent"), () => outdentBookmark(menu.bm.id), menu.isRoot)}
-          <div className="ctx-sep" />
+          <div className="ctx-sep" role="separator" />
           {item(t("tipBmDelete"), () => deleteBookmark(menu.bm.id))}
         </div>
       )}

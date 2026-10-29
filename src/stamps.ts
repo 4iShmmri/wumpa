@@ -1,6 +1,7 @@
 import { useStore } from "./store";
 import type { StampItem } from "./types";
 import type { WireStamp } from "./backend";
+import { DEFAULT_TEXT_COLOR, clampTextSize } from "./components/ui/textPalette";
 
 const S = useStore.getState;
 const SCALE = 4;
@@ -37,7 +38,7 @@ export function addTextStamp(tabId: string, src: number, x: number, y: number): 
     kind: "text",
     text: "",
     size,
-    color: "#111111",
+    color: DEFAULT_TEXT_COLOR,
   };
   S().mutateDoc(tabId, (t) => ({ stamps: [...t.stamps, stamp] }));
   return stamp;
@@ -94,7 +95,7 @@ export function addTextStampAt(
     kind: "text",
     text,
     size,
-    color: "#111111",
+    color: DEFAULT_TEXT_COLOR,
   };
   S().mutateDoc(tabId, (t) => ({ stamps: [...t.stamps, stamp] }));
   return stamp;
@@ -121,7 +122,10 @@ export function moveStamp(tabId: string, id: string, dx: number, dy: number) {
   S().mutateDoc(tabId, (t) => ({
     stamps: t.stamps.map((s) =>
       s.id === id
-        ? { ...s, rect: [s.rect[0] + dx, s.rect[1] + dy, s.rect[2] + dx, s.rect[3] + dy] as StampItem["rect"] }
+        ? {
+            ...s,
+            rect: [s.rect[0] + dx, s.rect[1] + dy, s.rect[2] + dx, s.rect[3] + dy] as StampItem["rect"],
+          }
         : s,
     ),
   }));
@@ -132,7 +136,7 @@ export function resizeStamp(tabId: string, id: string, factor: number) {
   const s = tab?.stamps.find((x) => x.id === id);
   if (!s) return;
   if (s.kind === "text") {
-    const size = Math.max(6, Math.min(120, Math.round((s.size ?? 16) * factor)));
+    const size = clampTextSize(Math.round((s.size ?? 16) * factor));
     updateTextStamp(tabId, id, { size });
     return;
   }
@@ -154,15 +158,47 @@ export function deleteStamp(tabId: string, id: string) {
   if (st.stampEditing === id) st.setStampEditing(null);
 }
 
+// Decoded images keyed by a hash of their URL rather than the URL itself: a
+// data URL is the whole image again, and the map must not pin every one ever
+// placed. Insertion order doubles as LRU order; a hit is re-inserted.
+const IMG_CACHE_MAX = 24;
 const imgCache = new Map<string, HTMLImageElement>();
 
+// cyrb53: cheap 53-bit string hash, good enough to tell data URLs apart. The
+// length is folded into the key and the hit is checked against the URL anyway.
+function hashUrl(url: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < url.length; i++) {
+    const ch = url.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${url.length}:${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
+}
+
 export function loadImage(url: string): Promise<HTMLImageElement> {
-  const hit = imgCache.get(url);
-  if (hit?.complete) return Promise.resolve(hit);
+  const key = hashUrl(url);
+  const hit = imgCache.get(key);
+  // img.src holds the URL already, so the check costs no extra memory and
+  // turns a hash collision into a plain miss.
+  if (hit?.complete && hit.src === url) {
+    imgCache.delete(key);
+    imgCache.set(key, hit);
+    return Promise.resolve(hit);
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      imgCache.set(url, img);
+      imgCache.delete(key);
+      imgCache.set(key, img);
+      while (imgCache.size > IMG_CACHE_MAX) {
+        const oldest = imgCache.keys().next().value;
+        if (oldest === undefined) break;
+        imgCache.delete(oldest);
+      }
       resolve(img);
     };
     img.onerror = reject;
@@ -200,7 +236,7 @@ export async function rasterizeStamps(stamps: StampItem[]): Promise<WireStamp[]>
       const size = (s.size ?? 16) * SCALE;
       const lh = s.lineHeight ?? STAMP_LINE;
       ctx.font = `${size}px ${s.fontFamily ?? STAMP_FONT}`;
-      ctx.fillStyle = s.color ?? "#111111";
+      ctx.fillStyle = s.color ?? DEFAULT_TEXT_COLOR;
       ctx.textBaseline = "top";
       (s.text ?? "").split("\n").forEach((line, i) => {
         ctx.fillText(line, STAMP_PAD_X * SCALE, STAMP_PAD_Y * SCALE + i * size * lh);

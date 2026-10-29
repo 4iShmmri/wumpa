@@ -1,0 +1,29 @@
+/* ---------- Drawing ---------- */
+.shape-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.shape-layer svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.viewer.draw-mode {
+  cursor: crosshair;
+}
+
+.viewer.draw-mode .textLayer {
+  pointer-events: none;
+}
+
+.shape-sel-outline {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+}

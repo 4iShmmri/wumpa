@@ -1,0 +1,61 @@
+/* ---------- Welcome recents ---------- */
+.welcome-recent {
+  margin-top: 16px;
+  text-align: left;
+  min-width: 0;
+}
+
+.welcome-recent h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+  padding-inline-start: 10px;
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.recent-row svg {
+  flex-shrink: 0;
+  color: var(--fg-dim);
+}
+
+.recent-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.recent-row:hover {
+  background: var(--btn-hover);
+}
+
+.recent-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-path {
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

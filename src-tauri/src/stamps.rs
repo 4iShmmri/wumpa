@@ -1,31 +1,19 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
+use lopdf::{Dictionary, Document, Object, ObjectId};
 use serde::Deserialize;
-use std::io::Write;
 
-type R<T> = Result<T, String>;
-
-fn err<E: std::fmt::Display>(e: E) -> String {
-    e.to_string()
-}
+use crate::common::{err, rgba_xobject, R};
+use crate::pages::PageIndex;
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Stamp {
-    pub src: u32,
+    pub src: i32,
     pub rect: [f64; 4],
     pub w: u32,
     pub h: u32,
     pub rgba_b64: String,
-}
-
-fn deflate(data: &[u8]) -> R<Vec<u8>> {
-    let mut enc = ZlibEncoder::new(Vec::new(), Compression::default());
-    enc.write_all(data).map_err(err)?;
-    enc.finish().map_err(err)
 }
 
 fn resolved_dict(doc: &Document, obj: &Object) -> Dictionary {
@@ -42,11 +30,14 @@ fn resolved_dict(doc: &Document, obj: &Object) -> Dictionary {
 }
 
 fn page_resources(doc: &Document, page_id: ObjectId) -> R<Dictionary> {
-    let page = doc.get_object(page_id).and_then(|o| o.as_dict()).map_err(err)?;
+    let page = doc
+        .get_object(page_id)
+        .and_then(|o| o.as_dict())
+        .map_err(err)?;
     if let Ok(obj) = page.get(b"Resources") {
         return Ok(resolved_dict(doc, &obj.clone()));
     }
-    if let Some(obj) = crate::pdf_ops::find_inherited(doc, page, b"Resources") {
+    if let Some(obj) = crate::pages::find_inherited(doc, page, b"Resources") {
         return Ok(resolved_dict(doc, &obj));
     }
     Ok(Dictionary::new())
@@ -64,7 +55,7 @@ fn register_xobject(
         .map(|o| resolved_dict(doc, &o.clone()))
         .unwrap_or_default();
     let name = loop {
-        let cand = format!("PES{counter}");
+        let cand = format!("WImg{counter}");
         *counter += 1;
         if xobjects.get(cand.as_bytes()).is_err() {
             break cand;
@@ -80,58 +71,26 @@ fn register_xobject(
     Ok(name)
 }
 
-pub fn apply_stamps(doc: &mut Document, stamps: &[Stamp]) -> R<()> {
-    if stamps.is_empty() {
-        return Ok(());
-    }
-    let page_map = doc.get_pages();
+// Draws each stamp onto the page `index` resolves its `src` to; stamps on
+// pages the index does not know are skipped.
+pub fn apply_stamps(doc: &mut Document, stamps: &[Stamp], index: &PageIndex) -> R<()> {
     let mut counter = 0usize;
     for s in stamps {
-        let Some(&pid) = page_map.get(&s.src) else {
+        let Some(pid) = index.page_for(s.src) else {
             continue;
         };
         let raw = B64.decode(&s.rgba_b64).map_err(err)?;
-        let expect = s.w as usize * s.h as usize * 4;
-        if raw.len() != expect {
-            return Err(format!("stamp buffer is {} bytes, expected {}", raw.len(), expect));
-        }
-        let mut rgb = Vec::with_capacity(expect / 4 * 3);
-        let mut alpha = Vec::with_capacity(expect / 4);
-        for px in raw.chunks_exact(4) {
-            rgb.extend_from_slice(&px[..3]);
-            alpha.push(px[3]);
-        }
-        let smask_id = doc.add_object(Stream::new(
-            dictionary! {
-                "Type" => "XObject",
-                "Subtype" => "Image",
-                "Width" => s.w as i64,
-                "Height" => s.h as i64,
-                "ColorSpace" => "DeviceGray",
-                "BitsPerComponent" => 8,
-                "Filter" => "FlateDecode",
-            },
-            deflate(&alpha)?,
-        ));
-        let img_id = doc.add_object(Stream::new(
-            dictionary! {
-                "Type" => "XObject",
-                "Subtype" => "Image",
-                "Width" => s.w as i64,
-                "Height" => s.h as i64,
-                "ColorSpace" => "DeviceRGB",
-                "BitsPerComponent" => 8,
-                "Filter" => "FlateDecode",
-                "SMask" => smask_id,
-            },
-            deflate(&rgb)?,
-        ));
+        let img_id = rgba_xobject(doc, s.w, s.h, &raw)?;
         let name = register_xobject(doc, pid, img_id, &mut counter)?;
         let [x1, y1, x2, y2] = s.rect;
-        let mut content = doc.get_page_content(pid);
+        // The existing content is wrapped in q/Q so an unbalanced state it
+        // leaves behind cannot move or scale the stamp.
+        crate::common::ensure_contents(doc, pid)?;
+        let mut content = b"q\n".to_vec();
+        content.extend_from_slice(&doc.get_page_content(pid));
         content.extend_from_slice(
             format!(
-                "\nq {:.4} 0 0 {:.4} {:.4} {:.4} cm /{} Do Q\n",
+                "\nQ\nq {:.4} 0 0 {:.4} {:.4} {:.4} cm /{} Do Q\n",
                 x2 - x1,
                 y2 - y1,
                 x1,
@@ -148,64 +107,13 @@ pub fn apply_stamps(doc: &mut Document, stamps: &[Stamp]) -> R<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::testing::{roundtrip, sample_doc};
     use crate::editor;
-    use crate::pdf_ops::{rebuild, PageSpec};
-    use lopdf::content::{Content, Operation};
+    use crate::pages::{rebuild, PageSpec};
 
-    fn sample_doc(pages: usize) -> Document {
-        let mut doc = Document::with_version("1.7");
-        let pages_id = doc.new_object_id();
-        let font_id = doc.add_object(dictionary! {
-            "Type" => "Font",
-            "Subtype" => "Type1",
-            "BaseFont" => "Helvetica",
-        });
-        let resources_id = doc.add_object(dictionary! {
-            "Font" => dictionary! { "F1" => font_id },
-        });
-        let mut kids: Vec<Object> = Vec::new();
-        for n in 1..=pages {
-            let content = Content {
-                operations: vec![
-                    Operation::new("BT", vec![]),
-                    Operation::new("Tf", vec!["F1".into(), 24.into()]),
-                    Operation::new("Td", vec![72.into(), 700.into()]),
-                    Operation::new("Tj", vec![Object::string_literal(format!("Page {n}"))]),
-                    Operation::new("ET", vec![]),
-                ],
-            };
-            let content_id =
-                doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
-            let page_id = doc.add_object(dictionary! {
-                "Type" => "Page",
-                "Parent" => pages_id,
-                "Contents" => content_id,
-                "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
-                "Resources" => resources_id,
-            });
-            kids.push(Object::Reference(page_id));
-        }
-        let count = kids.len() as i64;
-        doc.objects.insert(
-            pages_id,
-            Object::Dictionary(dictionary! {
-                "Type" => "Pages",
-                "Kids" => kids,
-                "Count" => count,
-            }),
-        );
-        let catalog_id = doc.add_object(dictionary! {
-            "Type" => "Catalog",
-            "Pages" => pages_id,
-        });
-        doc.trailer.set("Root", catalog_id);
-        doc
-    }
-
-    fn roundtrip(doc: &mut Document) -> Document {
-        let mut buf = Vec::new();
-        doc.save_to(&mut buf).unwrap();
-        Document::load_mem(&buf).unwrap()
+    fn stamp_all(doc: &mut Document, stamps: &[Stamp]) -> R<()> {
+        let index = PageIndex::of(doc);
+        apply_stamps(doc, stamps, &index)
     }
 
     fn red_2x2() -> Stamp {
@@ -222,7 +130,7 @@ mod tests {
     #[test]
     fn stamp_adds_image_with_smask() {
         let mut doc = sample_doc(1);
-        apply_stamps(&mut doc, &[red_2x2()]).unwrap();
+        stamp_all(&mut doc, &[red_2x2()]).unwrap();
         let out = roundtrip(&mut doc);
         let pages = out.get_pages();
         let pid = pages[&1];
@@ -240,7 +148,11 @@ mod tests {
         let page = out.get_object(pid).unwrap().as_dict().unwrap();
         let res = resolved_dict(&out, &page.get(b"Resources").unwrap().clone());
         let xobjs = resolved_dict(&out, &res.get(b"XObject").unwrap().clone());
-        let img_ref = xobjs.get(b"PES0").expect("PES0 missing").as_reference().unwrap();
+        let img_ref = xobjs
+            .get(b"WImg0")
+            .expect("WImg0 missing")
+            .as_reference()
+            .unwrap();
         let stream = out.get_object(img_ref).unwrap().as_stream().unwrap();
         assert!(stream.dict.get(b"SMask").is_ok(), "image missing SMask");
     }
@@ -248,7 +160,7 @@ mod tests {
     #[test]
     fn shared_resources_stay_isolated() {
         let mut doc = sample_doc(2);
-        apply_stamps(&mut doc, &[red_2x2()]).unwrap();
+        stamp_all(&mut doc, &[red_2x2()]).unwrap();
         let out = roundtrip(&mut doc);
         let pages = out.get_pages();
 
@@ -256,7 +168,7 @@ mod tests {
         let res2 = resolved_dict(&out, &p2.get(b"Resources").unwrap().clone());
         let has = res2
             .get(b"XObject")
-            .map(|o| resolved_dict(&out, &o.clone()).get(b"PES0").is_ok())
+            .map(|o| resolved_dict(&out, &o.clone()).get(b"WImg0").is_ok())
             .unwrap_or(false);
         assert!(!has, "stamp leaked into page 2 resources");
 
@@ -270,7 +182,7 @@ mod tests {
         let mut doc = sample_doc(2);
         let mut stamp = red_2x2();
         stamp.src = 2;
-        apply_stamps(&mut doc, &[stamp]).unwrap();
+        stamp_all(&mut doc, &[stamp]).unwrap();
         rebuild(&mut doc, &[PageSpec::page(1, 0)], &[], &[], &[]).unwrap();
         let out = roundtrip(&mut doc);
         assert_eq!(out.get_pages().len(), 1);

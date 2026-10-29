@@ -1,0 +1,48 @@
+/* ---------- Search bar ---------- */
+.searchbar {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 18px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  z-index: 20;
+}
+
+.searchbar input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  width: 180px;
+  font-family: inherit;
+}
+
+.search-count {
+  color: var(--fg-dim);
+  font-size: 12px;
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.searchbar button {
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.searchbar button:hover {
+  background: var(--btn-hover);
+}

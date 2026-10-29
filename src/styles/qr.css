@@ -1,0 +1,34 @@
+/* ---------- Clickable in-page QR codes ---------- */
+.qr-spot {
+  position: absolute;
+  z-index: 3;
+  border: 1.5px dashed transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.qr-spot:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.qr-badge {
+  position: absolute;
+  top: -8px;
+  inset-inline-end: -8px;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.qr-spot:hover .qr-badge {
+  opacity: 1;
+}

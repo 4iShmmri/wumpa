@@ -1,15 +1,34 @@
 import { create } from "zustand";
 import type {
-  Tab, Snapshot, Highlight, Note, ObjectEdit, StampItem, ShapeItem, ShapeKind, LinkItem, LinkRemoval,
+  AttemptStatus,
+  Tab,
+  Snapshot,
+  Highlight,
+  Note,
+  ObjectEdit,
+  StampItem,
+  ShapeItem,
+  ShapeKind,
+  LinkItem,
+  LinkRemoval,
 } from "./types";
 import { evictDoc } from "./pdf";
+import { clearPreview } from "./preview";
+import type { LangPref } from "./i18n";
 import { evictObjects } from "./objects";
 
 export type Tool = "select" | "note" | "edit" | "erase" | "text" | "sign" | "draw" | "link";
 export type UtilModal =
-  | "compress" | "qr" | "newpdf" | "table"
-  | "encrypt" | "decrypt" | "sign" | "sigdetails";
-export type LangPref = "en" | "ar" | "auto";
+  | "compress"
+  | "qr"
+  | "newpdf"
+  | "table"
+  | "split"
+  | "encrypt"
+  | "decrypt"
+  | "scan"
+  | "exportDocx"
+  | "exportXlsx";
 
 export interface ObjSel {
   src: number;
@@ -46,6 +65,13 @@ interface AppState {
   stampSel: { src: number; id: string } | null;
   stampEditing: string | null;
   signatureModalOpen: boolean;
+  fitNonce: number;
+  passwordPrompt: {
+    name: string;
+    wrong: boolean;
+    status: AttemptStatus | null;
+    resolve: (pw: string | null) => void;
+  } | null;
   utilModal: UtilModal | null;
   qrPreset: string | null;
   shapeSel: { tabId: string; id: string } | null;
@@ -55,6 +81,7 @@ interface AppState {
   lang: LangPref;
   effectiveLang: "en" | "ar";
   compare: CompareState | null;
+  compareDialog: { oldPath: string | null } | null;
 
   addTab: (tab: Tab) => void;
   setLang: (lang: LangPref) => void;
@@ -74,6 +101,8 @@ interface AppState {
   setStampSel: (sel: { src: number; id: string } | null) => void;
   setStampEditing: (id: string | null) => void;
   setSignatureModal: (open: boolean) => void;
+  askPassword: (name: string, wrong: boolean, status: AttemptStatus | null) => Promise<string | null>;
+  fitWidth: () => void;
   setUtilModal: (m: UtilModal | null) => void;
   setQrPreset: (v: string | null) => void;
   setShapeSel: (sel: { tabId: string; id: string } | null) => void;
@@ -82,6 +111,8 @@ interface AppState {
   setDrawWidth: (w: number) => void;
   openCompare: (c: CompareState) => void;
   closeCompare: () => void;
+  openCompareDialog: (oldPath: string | null) => void;
+  closeCompareDialog: () => void;
 }
 
 function snapshot(t: Tab): Snapshot {
@@ -132,6 +163,17 @@ function computeEffective(lang: LangPref, tabs: Tab[], activeId: string | null):
 }
 
 const initialLang = readLangPref();
+let passwordQueue: Promise<void> = Promise.resolve();
+
+// Per-document selections never survive a change of active tab.
+const selectionReset = {
+  search: { open: false, query: "", matches: [] as number[], current: 0 },
+  tool: "select" as Tool,
+  objSel: null,
+  stampSel: null,
+  stampEditing: null,
+  shapeSel: null,
+};
 
 export const useStore = create<AppState>((set, get) => ({
   tabs: [],
@@ -145,6 +187,8 @@ export const useStore = create<AppState>((set, get) => ({
   stampSel: null,
   stampEditing: null,
   signatureModalOpen: false,
+  fitNonce: 0,
+  passwordPrompt: null,
   utilModal: null,
   qrPreset: null,
   shapeSel: null,
@@ -154,6 +198,7 @@ export const useStore = create<AppState>((set, get) => ({
   lang: initialLang,
   effectiveLang: computeEffective(initialLang, [], null),
   compare: null,
+  compareDialog: null,
 
   setLang: (lang) => {
     try {
@@ -164,40 +209,29 @@ export const useStore = create<AppState>((set, get) => ({
     set({ lang });
   },
 
-  addTab: (tab) =>
-    set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
+  addTab: (tab) => set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id })),
 
-  closeTab: (id) =>
+  closeTab: (id) => {
+    evictDoc(id);
+    evictObjects(id);
+    clearPreview(id);
     set((s) => {
-      evictDoc(id);
-      evictObjects(id);
       const tabs = s.tabs.filter((t) => t.id !== id);
-      let activeId = s.activeId;
-      if (activeId === id) {
-        const idx = s.tabs.findIndex((t) => t.id === id);
-        activeId = tabs[Math.min(idx, tabs.length - 1)]?.id ?? null;
-      }
-      return { tabs, activeId };
-    }),
+      if (s.activeId !== id) return { tabs };
+      const idx = s.tabs.findIndex((t) => t.id === id);
+      const activeId = tabs[Math.min(idx, tabs.length - 1)]?.id ?? null;
+      return { tabs, activeId, ...selectionReset };
+    });
+  },
 
-  setActive: (id) =>
-    set({
-      activeId: id,
-      search: { open: false, query: "", matches: [], current: 0 },
-      tool: "select",
-      objSel: null,
-      stampSel: null,
-      stampEditing: null,
-      shapeSel: null,
-    }),
+  setActive: (id) => set({ activeId: id, ...selectionReset }),
 
-  patchTab: (id, patch) =>
-    set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+  patchTab: (id, patch) => set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
 
   mutateDoc: (id, fn) =>
     set((s) => ({
       tabs: s.tabs.map((t) => {
-        if (t.id !== id) return t;
+        if (t.id !== id || t.saving) return t;
         const patch = fn(t);
         return {
           ...t,
@@ -243,9 +277,9 @@ export const useStore = create<AppState>((set, get) => ({
       }),
     })),
 
-  markSaved: (id, newPath, newName) =>
+  markSaved: (id, newPath, newName) => {
+    evictObjects(id);
     set((s) => {
-      evictObjects(id);
       return {
         objSel: null,
         stampSel: null,
@@ -265,19 +299,22 @@ export const useStore = create<AppState>((set, get) => ({
             stamps: [] as StampItem[],
             shapes: [] as ShapeItem[],
             bookmarks: null,
+            bookmarksTouched: false,
             links: [] as LinkItem[],
             linkRemovals: [] as LinkRemoval[],
-            signatures: undefined,
             previewPath: null,
             past: [],
             future: [],
             dirty: false,
+            untitled: false,
+            saving: false,
             docVersion: t.docVersion + 1,
             selected: [],
           };
         }),
       };
-    }),
+    });
+  },
 
   setTheme: (theme) => {
     localStorage.setItem("theme", theme);
@@ -295,8 +332,7 @@ export const useStore = create<AppState>((set, get) => ({
       }, 5000);
     }
   },
-  scrollTo: (page) =>
-    set((s) => ({ scrollTarget: { page, nonce: (s.scrollTarget?.nonce ?? 0) + 1 } })),
+  scrollTo: (page) => set((s) => ({ scrollTarget: { page, nonce: (s.scrollTarget?.nonce ?? 0) + 1 } })),
   setTool: (tool) =>
     set((s) => ({ tool, objSel: tool === "edit" ? s.objSel : null, stampSel: null, shapeSel: null })),
   setObjSel: (objSel) =>
@@ -313,6 +349,31 @@ export const useStore = create<AppState>((set, get) => ({
     })),
   setStampEditing: (stampEditing) => set({ stampEditing }),
   setSignatureModal: (signatureModalOpen) => set({ signatureModalOpen }),
+  // WebViews have no window.prompt, so password requests go through an in-app
+  // modal, one at a time (two protected files opened together both ask).
+  askPassword: (name, wrong, status) => {
+    const show = () =>
+      new Promise<string | null>((resolve) => {
+        set({
+          passwordPrompt: {
+            name,
+            wrong,
+            status,
+            resolve: (pw) => {
+              set({ passwordPrompt: null });
+              resolve(pw);
+            },
+          },
+        });
+      });
+    const next = passwordQueue.then(show, show);
+    passwordQueue = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  },
+  fitWidth: () => set((s) => ({ fitNonce: s.fitNonce + 1 })),
   setUtilModal: (utilModal) => set({ utilModal }),
   setQrPreset: (qrPreset) => set({ qrPreset }),
   setShapeSel: (shapeSel) =>
@@ -324,15 +385,17 @@ export const useStore = create<AppState>((set, get) => ({
   setDrawKind: (drawKind) => set({ drawKind }),
   setDrawColor: (drawColor) => set({ drawColor }),
   setDrawWidth: (drawWidth) => set({ drawWidth }),
-  openCompare: (compare) => set({ compare }),
-  closeCompare: () =>
-    set((s) => {
-      if (s.compare) {
-        evictDoc(s.compare.leftKey);
-        evictDoc(s.compare.rightKey);
-      }
-      return { compare: null };
-    }),
+  openCompare: (compare) => set({ compare, compareDialog: null }),
+  openCompareDialog: (oldPath) => set({ compareDialog: { oldPath } }),
+  closeCompareDialog: () => set({ compareDialog: null }),
+  closeCompare: () => {
+    const c = get().compare;
+    if (c) {
+      evictDoc(c.leftKey);
+      evictDoc(c.rightKey);
+    }
+    set({ compare: null });
+  },
 }));
 
 function applyLangAttrs(l: "en" | "ar") {

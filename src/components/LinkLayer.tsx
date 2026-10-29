@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { trackPointer } from "../pointer";
+import Modal from "./ui/Modal";
 import type { PageViewport } from "pdfjs-dist";
 import { getLinks, type DocEntry, type ExistingLink } from "../pdf";
 import type { LinkItem, LinkRemoval, Rect } from "../types";
@@ -20,17 +22,10 @@ function rectNear(a: Rect, b: Rect) {
   return a.every((v, i) => Math.abs(v - b[i]) < 1.5);
 }
 
-function track(onMove: (e: PointerEvent) => void, onUp: (e: PointerEvent) => void) {
-  const up = (e: PointerEvent) => {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", up);
-    onUp(e);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", up);
-}
-
-function LinkModal({ onClose, onSave }: {
+function LinkModal({
+  onClose,
+  onSave,
+}: {
   onClose: () => void;
   onSave: (t: { url?: string; destSrc?: number }) => void;
 }) {
@@ -50,32 +45,61 @@ function LinkModal({ onClose, onSave }: {
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="modal lnk-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{t("lnkTitle")}</h3>
-        <div className="seg">
-          <button className={mode === "url" ? "on" : ""} onClick={() => setMode("url")}>{t("lnkToUrl")}</button>
-          <button className={mode === "page" ? "on" : ""} onClick={() => setMode("page")}>{t("lnkToPage")}</button>
-        </div>
-        {mode === "url" ? (
-          <input autoFocus placeholder={t("lnkUrlPlaceholder")} value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }} />
-        ) : (
-          <input autoFocus type="number" min={1} placeholder={t("lnkPagePlaceholder")} value={page}
-            onChange={(e) => setPage(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }} />
-        )}
-        <div className="modal-actions">
-          <button data-tip={t("tipCancelEsc")} onClick={onClose}>{t("btnCancel")}</button>
-          <button className="btn-primary" onClick={save}>{t("btnInsert")}</button>
-        </div>
+    <Modal onClose={onClose} className="lnk-modal">
+      <h3>{t("lnkTitle")}</h3>
+      <div className="seg">
+        <button className={mode === "url" ? "on" : ""} onClick={() => setMode("url")}>
+          {t("lnkToUrl")}
+        </button>
+        <button className={mode === "page" ? "on" : ""} onClick={() => setMode("page")}>
+          {t("lnkToPage")}
+        </button>
       </div>
-    </div>
+      {mode === "url" ? (
+        <input
+          autoFocus
+          placeholder={t("lnkUrlPlaceholder")}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+          }}
+        />
+      ) : (
+        <input
+          autoFocus
+          type="number"
+          min={1}
+          placeholder={t("lnkPagePlaceholder")}
+          value={page}
+          onChange={(e) => setPage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+          }}
+        />
+      )}
+      <div className="modal-actions">
+        <button data-tip={t("tipCancelEsc")} onClick={onClose}>
+          {t("btnCancel")}
+        </button>
+        <button className="btn-primary" onClick={save}>
+          {t("btnInsert")}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
-export default function LinkLayer({ entry, src, viewport, w, h, active, links, removals, version }: {
+export default function LinkLayer({
+  entry,
+  src,
+  viewport,
+  w,
+  h,
+  active,
+  links,
+  removals,
+}: {
   entry: DocEntry;
   src: number;
   viewport: PageViewport;
@@ -84,7 +108,6 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
   active: boolean;
   links: LinkItem[];
   removals: LinkRemoval[];
-  version: number;
 }) {
   const t = useT();
   const [existing, setExisting] = useState<ExistingLink[]>([]);
@@ -93,25 +116,52 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
   const [sel, setSel] = useState<string | null>(null);
 
   useEffect(() => {
+    if (src <= 0) return; // blank pages carry no links of their own
     let on = true;
-    getLinks(entry, src).then((l) => on && setExisting(l)).catch(() => {});
-    return () => { on = false; };
-  }, [entry, src, version]);
+    getLinks(entry, src)
+      .then((l) => on && setExisting(l))
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [entry, src, entry.version]);
 
-  useEffect(() => { if (!active) { setSel(null); setPending(null); setDraw(null); } }, [active]);
+  useEffect(() => {
+    if (!active) {
+      setSel(null);
+      setPending(null);
+      setDraw(null);
+    }
+  }, [active]);
 
   const toVp = (r: Rect) => {
     const [x1, y1] = viewport.convertToViewportPoint(r[0], r[1]) as [number, number];
     const [x2, y2] = viewport.convertToViewportPoint(r[2], r[3]) as [number, number];
-    return { left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) };
+    return {
+      left: Math.min(x1, x2),
+      top: Math.min(y1, y2),
+      width: Math.abs(x2 - x1),
+      height: Math.abs(y2 - y1),
+    };
   };
 
   const shown: Shown[] = [
     ...existing
       .filter((e) => !removals.some((r) => rectNear(r.rect, e.rect)))
-      .map((e, i) => ({ key: `ex${i}`, rect: e.rect, url: e.url, destSrc: e.destSrc, kind: "existing" as const })),
+      .map((e, i) => ({
+        key: `ex${i}`,
+        rect: e.rect,
+        url: e.url,
+        destSrc: e.destSrc,
+        kind: "existing" as const,
+      })),
     ...links.map((l) => ({
-      key: l.id, rect: l.rect, url: l.url ?? null, destSrc: l.destSrc ?? null, kind: "added" as const, id: l.id,
+      key: l.id,
+      rect: l.rect,
+      url: l.url ?? null,
+      destSrc: l.destSrc ?? null,
+      kind: "added" as const,
+      id: l.id,
     })),
   ];
 
@@ -121,7 +171,7 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
     const host = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const a: Pt = [e.clientX - host.left, e.clientY - host.top];
     setDraw({ a, b: a });
-    track(
+    trackPointer(
       (ev) => setDraw({ a, b: [ev.clientX - host.left, ev.clientY - host.top] }),
       (ev) => {
         const b: Pt = [ev.clientX - host.left, ev.clientY - host.top];
@@ -142,19 +192,32 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
     >
       {shown.map((s) => {
         const box = toVp(s.rect);
-        const label = s.url ? t("tipLnkOpen") : s.destSrc ? t("lnkGoPage", { n: s.destSrc }) : t("lnkExisting");
+        const label = s.url
+          ? t("tipLnkOpen")
+          : s.destSrc
+            ? t("lnkGoPage", { n: s.destSrc })
+            : t("lnkExisting");
         return (
           <div
             key={s.key}
             className={"link-box " + s.kind + (sel === s.key ? " sel" : "")}
             data-tip={active ? undefined : label}
             style={box}
-            onPointerDown={(e) => { if (active) { e.stopPropagation(); setSel(s.key); } }}
-            onClick={() => { if (!active) followLink(s); }}
+            onPointerDown={(e) => {
+              if (active) {
+                e.stopPropagation();
+                setSel(s.key);
+              }
+            }}
+            onClick={() => {
+              if (!active) followLink(s);
+            }}
           >
             {active && sel === s.key && (
               <span className="link-pop" onPointerDown={(e) => e.stopPropagation()}>
-                <span className="link-what" title={s.url ?? undefined}>{s.url ?? label}</span>
+                <span className="link-what" title={s.url ?? undefined}>
+                  {s.url ?? label}
+                </span>
                 <button
                   data-tip={t("tipLnkDelete")}
                   onClick={() => {
@@ -162,7 +225,9 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
                     else removeExistingLink(src, s.rect);
                     setSel(null);
                   }}
-                >✕</button>
+                >
+                  ✕
+                </button>
               </span>
             )}
           </div>
@@ -181,9 +246,7 @@ export default function LinkLayer({ entry, src, viewport, w, h, active, links, r
         />
       )}
 
-      {active && !draw && shown.length === 0 && (
-        <span className="link-hint">{t("lnkDrawHint")}</span>
-      )}
+      {active && !draw && shown.length === 0 && <span className="link-hint">{t("lnkDrawHint")}</span>}
 
       {pending && (
         <LinkModal

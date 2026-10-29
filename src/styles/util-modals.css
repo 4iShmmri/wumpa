@@ -1,0 +1,134 @@
+/* ---------- Utility modals ---------- */
+.modal-wide {
+  min-width: 420px;
+  max-width: 520px;
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.preset-row.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.preset-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.preset-name {
+  font-weight: 600;
+}
+
+.preset-desc {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+
+.form-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-row select,
+.form-row input {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-chrome);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12.5px;
+  min-width: 150px;
+}
+
+.form-row input[type="number"] {
+  min-width: 80px;
+  width: 80px;
+}
+
+.modal-hint {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  margin-top: 10px;
+}
+
+.qr-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.qr-tabs button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  padding: 5px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.qr-tabs button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.qr-tabs button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.qr-video {
+  width: 100%;
+  max-height: 280px;
+  border-radius: 8px;
+  background: #000;
+  object-fit: cover;
+}
+
+.qr-result {
+  background: var(--bg-chrome);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 160px;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  direction: ltr;
+}
+
+.qr-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}

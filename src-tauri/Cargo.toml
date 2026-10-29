@@ -28,7 +28,19 @@ flate2 = "1.1.10"
 base64 = "0.23.1"
 tauri-plugin-window-state = "2.5.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+imageproc = { version = "0.25", default-features = false }
 getrandom = "0.4"
+# password protection
+sha2 = "0.10"
+# page composer: text shaping, bidi, font subsetting
+rustybuzz = "0.20"
+ttf-parser = "0.25"
+unicode-bidi = "0.3"
+unicode-script = "0.5"
+subsetter = "0.2"
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

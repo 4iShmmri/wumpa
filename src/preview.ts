@@ -1,5 +1,5 @@
 import { useStore } from "./store";
-import { applyEditsPreview } from "./backend";
+import { applyEditsPreview, discardPreview } from "./backend";
 import { report } from "./errors";
 import { t } from "./i18n";
 
@@ -7,9 +7,21 @@ const timers = new Map<string, number>();
 const nonces = new Map<string, number>();
 const lastKey = new Map<string, string>();
 
+export function clearPreview(tabId: string) {
+  const last = useStore.getState().tabs.find((t) => t.id === tabId)?.previewPath;
+  if (last) void discardPreview(last);
+  window.clearTimeout(timers.get(tabId));
+  timers.delete(tabId);
+  nonces.delete(tabId);
+  lastKey.delete(tabId);
+}
+
 export function schedulePreview(tabId: string) {
   window.clearTimeout(timers.get(tabId));
-  timers.set(tabId, window.setTimeout(() => void run(tabId), 250));
+  timers.set(
+    tabId,
+    window.setTimeout(() => void run(tabId), 250),
+  );
 }
 
 async function run(tabId: string) {
@@ -25,6 +37,7 @@ async function run(tabId: string) {
     lastKey.set(tabId, key);
     if (tab.previewPath !== null) {
       st.patchTab(tabId, { previewPath: null, docVersion: tab.docVersion + 1 });
+      void discardPreview(tab.previewPath);
     }
     return;
   }
@@ -36,6 +49,7 @@ async function run(tabId: string) {
     lastKey.set(tabId, key);
     if (p) {
       useStore.getState().patchTab(tabId, { previewPath: p, docVersion: cur.docVersion + 1 });
+      if (cur.previewPath) void discardPreview(cur.previewPath);
     }
   } catch (e) {
     report(t("stPreviewFailed"), e);

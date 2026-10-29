@@ -1,0 +1,80 @@
+/* ---------- Notes ---------- */
+.note-icon {
+  position: absolute;
+  z-index: 3;
+  background: #ffd84a;
+  border: 1px solid #b8962e;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a5f12;
+}
+
+.note-icon.draft {
+  outline: 2px dashed var(--accent);
+  outline-offset: 1px;
+}
+
+.note-popover {
+  position: absolute;
+  z-index: 30;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  padding: 10px;
+  width: 240px;
+  font-size: 12.5px;
+}
+
+.note-popover textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  background: var(--bg-chrome);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  font-family: inherit;
+}
+
+.note-popover .note-author {
+  color: var(--fg-dim);
+  margin-bottom: 6px;
+}
+
+.note-popover .row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.note-popover .row button {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.note-popover .row .btn-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.viewer.note-mode {
+  cursor: crosshair;
+}
+
+.viewer.note-mode .textLayer {
+  pointer-events: none;
+}

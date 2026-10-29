@@ -1,0 +1,19 @@
+.scan-progress {
+  margin-top: 8px;
+}
+.scan-progress p {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.scan-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-chrome-2);
+  overflow: hidden;
+}
+.scan-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}

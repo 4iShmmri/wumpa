@@ -11,6 +11,7 @@ export default function SearchBar() {
 
   useEffect(() => {
     if (search.open) inputRef.current?.select();
+    return () => window.clearTimeout(debounce.current);
   }, [search.open]);
 
   if (!search.open) return null;
@@ -18,11 +19,12 @@ export default function SearchBar() {
   const close = () => useStore.getState().setSearch({ open: false });
 
   return (
-    <div className="searchbar">
+    <div className="searchbar" role="search">
       <input
         ref={inputRef}
         autoFocus
         placeholder={t("searchPlaceholder")}
+        aria-label={t("searchPlaceholder")}
         value={search.query}
         onChange={(e) => {
           const q = e.target.value;
@@ -35,12 +37,18 @@ export default function SearchBar() {
           if (e.key === "Escape") close();
         }}
       />
-      <span className="search-count">
+      <span className="search-count" aria-live="polite">
         {search.matches.length ? `${search.current + 1}/${search.matches.length}` : "0"}
       </span>
-      <button onClick={() => searchStep(-1)} data-tip={t("tipPrevMatch")}>‹</button>
-      <button onClick={() => searchStep(1)} data-tip={t("tipNextMatch")}>›</button>
-      <button onClick={close} data-tip={t("tipCloseSearch")}>×</button>
+      <button onClick={() => searchStep(-1)} data-tip={t("tipPrevMatch")} aria-label={t("tipPrevMatch")}>
+        ‹
+      </button>
+      <button onClick={() => searchStep(1)} data-tip={t("tipNextMatch")} aria-label={t("tipNextMatch")}>
+        ›
+      </button>
+      <button onClick={close} data-tip={t("tipCloseSearch")} aria-label={t("tipCloseSearch")}>
+        ×
+      </button>
     </div>
   );
 }
