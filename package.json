@@ -39,5 +39,11 @@
     "typescript-eslint": "^8.71.1",
     "vite": "^8.0.16",
     "vitest": "^5.0.3"
+  },
+  "description": "Fast, free, offline PDF editor (Tauri + Rust + React)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/4iShmmri/wumpa.git"
   }
 }

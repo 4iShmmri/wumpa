@@ -80,13 +80,16 @@ pub fn rebuild_scanned(
 mod tests {
     use super::*;
 
-    // Needs the OCR sidecar; run with `cargo test -- --ignored rebuild_scanned_end_to_end`.
+    // Needs the OCR sidecar and a real scanned PDF; run with
+    // `WUMPA_SCAN_SRC=/path/to/scan.pdf cargo test -- --ignored rebuild_scanned_end_to_end`.
     #[test]
     #[ignore]
     fn rebuild_scanned_end_to_end() {
-        let dir = "/private/tmp/claude-501/-Users-m-wumpa/f51ff4b4-442e-42b0-ae96-cc806678138d/scratchpad/ocr";
-        let src = std::env::var("WUMPA_SCAN_SRC").unwrap_or(format!("{dir}/scan.pdf"));
-        let out = std::env::var("WUMPA_SCAN_OUT").unwrap_or(format!("{dir}/rebuilt.pdf"));
+        let dir = std::env::temp_dir();
+        let src = std::env::var("WUMPA_SCAN_SRC")
+            .unwrap_or_else(|_| dir.join("scan.pdf").to_string_lossy().into_owned());
+        let out = std::env::var("WUMPA_SCAN_OUT")
+            .unwrap_or_else(|_| dir.join("rebuilt.pdf").to_string_lossy().into_owned());
         let mut stages = Vec::new();
         let n = rebuild_scanned(&src, &out, &[1], vec!["ar".into(), "en".into()], &mut |p| {
             stages.push(p.stage)
