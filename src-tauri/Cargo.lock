@@ -5561,7 +5561,7 @@ dependencies = [
 
 [[package]]
 name = "wumpa"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.23.1",
  "flate2",

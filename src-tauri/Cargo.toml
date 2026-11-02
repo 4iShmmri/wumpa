@@ -1,6 +1,6 @@
 [package]
 name = "wumpa"
-version = "0.1.0"
+version = "0.1.1"
 description = "Wumpa - fast, free, offline PDF editor"
 authors = ["Wumpa contributors"]
 edition = "2021"
